@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { GoogleDocsModule } from './google-docs/google-docs.module';
+import { GoogleDriveModule } from './google-drive/google-drive.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { GoogleDocsModule } from './google-docs/google-docs.module';
       envFilePath: '.env',
     }),
     GoogleDocsModule,
+    GoogleDriveModule,
   ],
   controllers: [AppController],
   providers: [AppService],

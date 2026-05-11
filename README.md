@@ -33,16 +33,16 @@ Para usar esta aplicação, você precisa de credenciais de Service Account do G
 
 1. Acesse o [Google Cloud Console](https://console.cloud.google.com/)
 2. Crie um novo projeto ou selecione um existente
-3. Ative a API do Google Docs:
+3. Ative as APIs do Google Cloud:
    - Vá em "APIs & Services" > "Library"
-   - Procure por "Google Docs API" e ative
+   - Ative **Google Docs API** e **Google Drive API**
 4. Crie uma Service Account:
    - Vá em "APIs & Services" > "Credentials"
    - Clique em "Create Credentials" > "Service Account"
    - Crie a conta e baixe o arquivo JSON de credenciais
-5. Compartilhe o documento do Google Docs com o email da Service Account:
-   - Abra o documento no Google Docs
-   - Clique em "Compartilhar" e adicione o email da Service Account com permissão de "Visualizador"
+5. Compartilhe documentos e pastas com o email da Service Account:
+   - Para **ler** documentos: permissão de **Visualizador** no Google Docs
+   - Para **upload, mover, editar metadados ou excluir** arquivos no Drive: permissão adequada (**Editor** ou **Gerenciador de conteúdo** nas pastas/arquivos envolvidos)
 
 ### 2. Variáveis de Ambiente
 
@@ -110,6 +110,25 @@ GET http://localhost:3000/google-docs/1yXkRcEa7UVBAIabzqFaCgUjyo_JRTdJPiRcRfYWqX
 O ID do documento pode ser extraído da URL do Google Docs:
 - URL: `https://docs.google.com/document/d/1yXkRcEa7UVBAIabzqFaCgUjyo_JRTdJPiRcRfYWqXRI/edit`
 - ID: `1yXkRcEa7UVBAIabzqFaCgUjyo_JRTdJPiRcRfYWqXRI`
+
+### Arquivos no Google Drive (upload, editar, mover, remover)
+
+Base: `http://localhost:3000/google-drive/files`
+
+| Método | Caminho | Descrição |
+|--------|---------|-----------|
+| `POST` | `/` | Upload multipart: campo `file` (obrigatório). Opcional: campo de formulário `parents` com JSON de IDs de pasta, ex. `["idDaPasta"]`. Resposta: JSON com `id`, `name`, `mimeType`, `parents`. |
+| `PATCH` | `/:fileId` | Edita metadados: corpo JSON `{ "name": "...", "description": "..." }` (pelo menos um campo). |
+| `POST` | `/:fileId/move` | Move para uma pasta: corpo `{ "targetFolderId": "idDaPastaDestino" }`. |
+| `DELETE` | `/:fileId` | Remove o arquivo permanentemente (sem lixeira). Resposta `204 No Content`. |
+
+Exemplo de upload com `curl` (arquivo em disco `relatorio.pdf`):
+
+```bash
+curl -sS -X POST "http://localhost:3000/google-drive/files" \
+  -F "file=@relatorio.pdf" \
+  -F 'parents=["ID_DA_PASTA_NO_DRIVE"]'
+```
 
 ## Run tests
 
