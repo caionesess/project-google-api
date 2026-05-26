@@ -1,35 +1,22 @@
-# Dependencies
-node_modules/
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# Build
-dist/
-build/
+# Ambientes virtuais (uv e padrões)
+.venv/
+venv/
+ENV/
 
-# Tests & coverage
-coverage/
-*.lcov
+# Testes e Cobertura
+.pytest_cache/
+.coverage
+htmlcov/
 
-# Logs
-logs/
+# Logs e Variáveis locais
 *.log
-npm-debug.log*
-pnpm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Environment (secrets)
 .env
-.env.*
-!.env.example
 
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE (opcional: remova as linhas abaixo se quiser versionar config da equipe)
-.idea/
-*.swp
-*.swo
-
-# Nest / misc
-*.tsbuildinfo
+# Google Service Account local
+credentials/google-service-account.json
