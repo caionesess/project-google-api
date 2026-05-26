@@ -20,3 +20,6 @@ htmlcov/
 
 # Google Service Account local
 credentials/google-service-account.json
+
+# Output de conversões
+output/

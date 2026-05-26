@@ -36,6 +36,8 @@ class GoogleDocsService:
         from playwright.async_api import async_playwright
 
         html_content = await self.get_document_as_html(document_id)
+        absolute_static_path = os.path.abspath("static").replace("\\", "/")
+        html_content = html_content.replace("../../static/", f"file:///{absolute_static_path}/")
 
         target_dir = os.path.dirname(output_path)
         temp_html_path = os.path.join(target_dir, f"temp_{document_id}.html")

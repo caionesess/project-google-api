@@ -49,7 +49,7 @@ async def handle_cli_execution(target_url: str, output_format: str):
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     
-    target_dir = os.path.join("app", f"{output_format}-{timestamp}")
+    target_dir = os.path.join("output", f"{output_format}-{timestamp}")
     
     os.makedirs(target_dir, exist_ok=True)
     print(f"Diretório de destino criado: {target_dir}")
