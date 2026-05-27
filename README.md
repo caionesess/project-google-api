@@ -98,7 +98,7 @@ Ao passar o link de uma **pasta** do Google Drive, o sistema listará todos os d
 
 #### A. Gerar PDFs em Batch
 
-Converte todos os documentos encontrados na pasta do Google Drive em arquivos PDF individuais dentro de `app/pdf-data-hora/`.
+Converte todos os documentos encontrados na pasta do Google Drive em arquivos PDF individuais dentro de `output/pdf-data-hora/`.
 
 ```powershell
 uv run python app/main.py --print "[https://drive.google.com/drive/folders/ID_DA_SUA_PASTA]"
@@ -106,11 +106,27 @@ uv run python app/main.py --print "[https://drive.google.com/drive/folders/ID_DA
 
 #### B. Gerar HTMLs em Batch
 
-Extrai e gera os arquivos `.html` correspondentes para todos os documentos da pasta informada dentro de `app/html-data-hora/`.
+Extrai e gera os arquivos `.html` correspondentes para todos os documentos da pasta informada dentro de `output/html-data-hora/`.
 
 ```powershell
 uv run python app/main.py --web "[https://drive.google.com/drive/folders/ID_DA_SUA_PASTA]"
 ```
+
+### 3. Executar como Servidor Web (API FastAPI & Swagger)
+Além do modo CLI focado em scripts locais, a aplicação pode ser executada como um servidor HTTP contínuo expondo uma API REST completa.
+
+Para inicializar o servidor em modo de desenvolvimento com recarregamento automático (auto-reload), execute:
+
+```powershell
+uv run uvicorn app.main:app --reload
+```
+O que é possível fazer no modo Servidor Web:
+* Documentação Interativa (Swagger UI): Acesse `http://127.0.0.1:8000/docs` no navegador para visualizar e testar todos os endpoints da aplicação de forma gráfica.
+
+* Conversão via Requisições HTTP: Disparar chamadas para os módulos de `/google-docs` e `/google-drive` para extrair dados ou gerenciar arquivos dinamicamente.
+
+* Testes em Tempo Real ("Try it out"): Enviar IDs de documentos e pastas diretamente pela interface web do Swagger e inspecionar imediatamente as estruturas JSON de resposta, os payloads e os códigos de status retornados pelo pipeline.
+
 
 ## Migração: Do `xhtml2pdf` para o `Playwright`
 
