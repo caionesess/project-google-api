@@ -78,7 +78,7 @@ Por fim, configure as variáveis de ambiente conforme descrito na seção de Con
 
 #### A. Gerar PDF Individual
 
-Abre o documento do Google Docs, cria o diretório de destino `app/pdf-data-hora/` e gera o PDF final via Playwright.
+Abre o documento do Google Docs, cria o diretório de destino `output/pdf-data-hora/` e gera o PDF final via Playwright.
 
 ```powershell
 uv run python app/main.py --print "[https://docs.google.com/document/d/ID_DO_SEU_DOCUMENTO/edit]"
@@ -86,7 +86,7 @@ uv run python app/main.py --print "[https://docs.google.com/document/d/ID_DO_SEU
 
 #### B. Gerar HTML Individual
 
-Extrai a estrutura do Google Docs, cria o diretório de destino `app/html-data-hora/` e gera o arquivo `.html` local.
+Extrai a estrutura do Google Docs, cria o diretório de destino `output/html-data-hora/` e gera o arquivo `.html` local.
 
 ```powershell
 uv run python app/main.py --web "[https://docs.google.com/document/d/ID_DO_SEU_DOCUMENTO/edit]"
