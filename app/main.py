@@ -31,7 +31,9 @@ def extract_id_from_url(url: str) -> str:
     return url
 
 async def handle_cli_execution(target_url: str, output_format: str):
-    """Orquestra a extração e download via CLI salvando em pastas com data/hora."""
+    """Orquestra a extração e download via CLI salvando com o nome da pasta pai ou timestamp."""
+    import os
+    from datetime import datetime
     from app.google_docs.service import GoogleDocsService
     from app.google_drive.repository import GoogleDriveFilesRepository
 
@@ -41,18 +43,24 @@ async def handle_cli_execution(target_url: str, output_format: str):
 
     try:
         files = drive_repo.list_docs_in_folder(target_id)
+        is_folder = True
     except Exception:
         files = []
+        is_folder = False
 
-    if not files:
+    if is_folder and files:
+        raw_folder_name = drive_repo.get_folder_name(target_id)
+        folder_name = re.sub(r'[\\/*?:"<>|]', "-", raw_folder_name)
+        folder_name = folder_name.strip()
+
+        target_dir = os.path.join("output", folder_name)
+    else:
         files = [{"id": target_id, "name": f"documento-{target_id}"}]
-
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    
-    target_dir = os.path.join("output", f"{output_format}-{timestamp}")
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        target_dir = os.path.join("output", f"{output_format}-{timestamp}")
     
     os.makedirs(target_dir, exist_ok=True)
-    print(f"Diretório de destino criado: {target_dir}")
+    print(f"Diretório de destino definido: {target_dir}")
 
     for doc in files:
         doc_id = doc["id"]

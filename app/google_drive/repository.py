@@ -99,6 +99,18 @@ class GoogleDriveFilesRepository:
             supportsAllDrives=True
         ).execute()
 
+    def get_folder_name(self, folder_id: str) -> str:
+        """Busca o nome da pasta no Google Drive."""
+        try:
+            response = self.drive.files().get(
+                fileId=folder_id, 
+                fields="name",
+                supportsAllDrives=True
+            ).execute()
+            return response.get("name", f"folder-{folder_id}")
+        except Exception:
+            return f"folder-{folder_id}"
+
     def list_docs_in_folder(self, folder_id: str) -> list:
         """Lista todos os Google Docs contidos em uma pasta do Drive"""
         query = f"'{folder_id}' in parents and mimeType = 'application/vnd.google-apps.document' and trashed = false"
