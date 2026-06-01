@@ -98,7 +98,7 @@ Ao passar o link de uma **pasta** do Google Drive, o sistema listará todos os d
 
 #### A. Gerar PDFs em Batch
 
-Converte todos os documentos encontrados na pasta do Google Drive em arquivos PDF individuais dentro de `output/pdf-data-hora/`.
+Converte todos os documentos encontrados na pasta do Google Drive em arquivos PDF individuais dentro de `output/NOME_DA_SUA_PASTA/`.
 
 ```powershell
 uv run python app/main.py --print "[https://drive.google.com/drive/folders/ID_DA_SUA_PASTA]"
@@ -106,7 +106,7 @@ uv run python app/main.py --print "[https://drive.google.com/drive/folders/ID_DA
 
 #### B. Gerar HTMLs em Batch
 
-Extrai e gera os arquivos `.html` correspondentes para todos os documentos da pasta informada dentro de `output/html-data-hora/`.
+Extrai e gera os arquivos `.html` correspondentes para todos os documentos da pasta informada dentro de `output/NOME_DA_SUA_PASTA/`.
 
 ```powershell
 uv run python app/main.py --web "[https://drive.google.com/drive/folders/ID_DA_SUA_PASTA]"
