@@ -17,6 +17,8 @@ htmlcov/
 # Logs e Variáveis locais
 *.log
 .env
+*.json
+*.csv
 
 # Google Service Account local
 credentials/google-service-account.json
