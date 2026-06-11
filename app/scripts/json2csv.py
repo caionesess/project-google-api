@@ -9,8 +9,8 @@ caminho_json = os.path.abspath(
     os.path.join(pasta_do_script, "..", "..", "metadados.json")
 )
 
-def determinar_modulo(nome_documento):
-    """Determina o módulo com base no nome do documento."""
+def determinar_componente(nome_documento):
+    """Determina o componente com base no nome do documento."""
     nome_upper = nome_documento.upper()
 
     if "PT_PJE 2026" in nome_upper:
@@ -42,13 +42,13 @@ def converter_json_para_csv(dados_json, nome_arquivo_saida="metadados.csv"):
     else:
         dados = dados_json
 
-    headers = ["nome do documento", "id do documento", "módulo", "objetivos"]
+    headers = ["nome do documento", "id do documento", "componente", "objetivos"]
 
     with open(
         nome_arquivo_saida, mode="w", encoding="utf-8-sig", newline=""
     ) as arquivo_csv:
         escritor = csv.writer(
-            arquivo_csv, delimiter=";", quoting=csv.QUOTE_MINIMAL
+            arquivo_csv, delimiter=",", quoting=csv.QUOTE_ALL
         )
 
         escritor.writerow(headers)
@@ -56,12 +56,17 @@ def converter_json_para_csv(dados_json, nome_arquivo_saida="metadados.csv"):
         for item in dados:
             nome = item.get("nome", "").strip()
             id_doc = item.get("id", "").strip()
-            modulo = determinar_modulo(nome)
+            componente = determinar_componente(nome)
 
             lista_objetivos = item.get("objetivos", [])
-            objetivos = " ; ".join(lista_objetivos) if lista_objetivos else ""
 
-            escritor.writerow([nome, id_doc, modulo, objetivos])
+            if lista_objetivos:
+                objetivos_formatados = ", ".join([f'"{obj}"' for obj in lista_objetivos])
+                objetivos = f"[{objetivos_formatados}]"
+            else:
+                objetivos = "[]"
+
+            escritor.writerow([nome, id_doc, componente, objetivos])
 
     print(f"Arquivo CSV gerado com sucesso: '{nome_arquivo_saida}'")
 

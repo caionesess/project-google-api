@@ -128,6 +128,13 @@ O que é possível fazer no modo Servidor Web:
 * Testes em Tempo Real ("Try it out"): Enviar IDs de documentos e pastas diretamente pela interface web do Swagger e inspecionar imediatamente as estruturas JSON de resposta, os payloads e os códigos de status retornados pelo pipeline.
 
 
+## Mineração de Dados e Persistência de Metadados
+
+Para enriquecer o pipeline de conversão sem comprometer a performance, o projeto realiza um processo de **Data Mining** (Mineração de Texto) diretamente na estrutura do Google Doc antes de sua renderização final. A extração foi isolada no módulo de serviço (`service.py`), desvinculando as regras de negócio analíticas do motor de transformações visuais (`transform.py`). 
+
+O script varre o documento de forma estruturada em busca de seções de objetivos pedagógicos organizadas em tabelas e listas de marcadores (*bullet points*). Ao final do processamento de cada arquivo, o sistema atualiza de forma incremental um catálogo unificado chamado `metadados.json` localizado na raiz do diretório de exportação.
+
+
 ## Migração: Do `xhtml2pdf` para o `Playwright`
 
 O sistema utilizava a biblioteca `xhtml2pdf` (baseada no ReportLab). Essa abordagem causava graves problemas visuais:
