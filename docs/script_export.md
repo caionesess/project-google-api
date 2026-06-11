@@ -21,6 +21,6 @@ Antes de executar, você precisa abrir o arquivo `app/scripts/export_drive.py` e
 # ==============================================================================
 # CONFIGURAÇÃO
 # ==============================================================================
-DRIVE_URL = "[https://drive.google.com/drive/folders/ID_DA_SUA_PASTA](https://drive.google.com/drive/folders/ID_DA_SUA_PASTA)"
+DRIVE_URL = "[https://drive.google.com/drive/folders/ID_DA_SUA_PASTA]" # Substitua pela URL da pasta do Google Drive
 OUTPUT_FORMAT = "web"  # Opções: "web" (para HTML) ou "print" (para PDF)
 # ==============================================================================

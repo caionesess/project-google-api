@@ -11,7 +11,6 @@ sys.path.insert(0, project_root)
 from app.google_docs.service import GoogleDocsService
 from app.google_drive.repository import GoogleDriveFilesRepository
 
-# TODO: criar diretório de documentação e documentar este script
 
 # ==============================================================================
 # CONFIGURAÇÃO
