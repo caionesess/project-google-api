@@ -2,6 +2,7 @@ import logging
 import os
 import json
 import asyncio
+import re
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from app.core.config import settings
@@ -21,39 +22,143 @@ class GoogleDocsService:
         self.client = build('docs', 'v1', credentials=self.credentials)
         self.transformer = GoogleDocsTransformer()
 
+    def _clean_text(self, text: str) -> str:
+        clean = text.replace('"', '').replace('\"', '').replace('\\', '')
+        clean = clean.strip("• \t\r\n")
+        return clean
+
+    def _is_stop_header(self, text: str) -> bool:
+        normalized = text.strip().upper()
+        stop_keywords = [
+            "SDG", "SDG LINK", "PROJECT", "PROJECT OUTCOME", "AREA OF STUDY", 
+            "RESOURCES", "RELEVANT LANGUAGE", "BEFORE THE LESSON", 
+            "SUGGESTED PROCEDURES", "PROCEDIMENTOS SUGERIDOS", "TEACHING TIPS",
+            "ANSWER KEY", "ADDITIONAL PRACTICE", "DESFECHO DO PROJETO", 
+            "PRÓXIMOS PASSOS", "DIRETRIZES GERAIS", "POSSIBILIDADES",
+            "LESSON 1", "LESSON 2", "LESSON 3", "LESSON 4", "LESSON 5",
+            "LIÇÃO 1", "LIÇÃO 2", "LIÇÃO 3", "LIÇÃO 4", "LIÇÃO 5", "PASSO 1"
+        ]
+        for kw in stop_keywords:
+            if normalized == kw or normalized.startswith(kw + " ") or normalized.startswith(kw + "\n"):
+                return True
+        return False
+
+    def _is_objective_header(self, text: str) -> bool:
+        normalized = text.strip().upper()
+        headers = [
+            "PROJECT OBJECTIVE", "PROJECT OBJECTIVES",
+            "LESSON OBJECTIVE", "LESSON OBJECTIVES",
+            "OBJETIVO DO PROJETO", "OBJETIVOS DO PROJETO"
+        ]
+        return any(h == normalized or normalized.startswith(h) for h in headers)
+
     def _extract_objectives(self, document_response: dict) -> list[str]:
         """
         Varre a estrutura do Google Doc procurando por tabelas que contenham
         a palavra 'objective' ou 'objetivo' e extrai os itens em formato bullet list
         """
         objectives = []
+        seen = set()
         body_content = document_response.get("body", {}).get("content", [])
+        in_objective_section = False
+
+        def process_element_text(text: str):
+            nonlocal in_objective_section
+            if not text or not text.strip():
+                return
+
+            if self._is_objective_header(text):
+                in_objective_section = True
+                return
+
+            if in_objective_section:
+                if self._is_stop_header(text) or "BNCC" in text.upper():
+                    in_objective_section = False
+                    return
+
+                clean = self._clean_text(text)
+                if clean and clean not in seen and len(clean) > 3:
+                    seen.add(clean)
+                    objectives.append(clean)
 
         for element in body_content:
-            if "table" in element:
-                table = element["table"]
-                table_text_lower = str(table).lower()
-                
-                if "objective" in table_text_lower or "objetivo" in table_text_lower:
-                    for row in table.get("tableRows", []):
-                        for cell in row.get("tableCells", []):
-                            for cell_element in cell.get("content", []):
-                                if "paragraph" in cell_element:
-                                    paragraph = cell_element["paragraph"]
-                                    if "bullet" in paragraph:
-                                        text_pieces = [
-                                            el.get("textRun", {}).get("content", "")
-                                            for el in paragraph.get("elements", [])
-                                        ]
-                                        full_text = "".join(text_pieces).strip()
-                                        if full_text:
-                                            objectives.append(full_text)
+            if "paragraph" in element:
+                p_text = self._get_paragraph_text(element["paragraph"])
+                process_element_text(p_text)
+
+            elif "table" in element:
+                table_texts = self._extract_texts_from_table(element["table"])
+                for text in table_texts:
+                    process_element_text(text)
+
         return objectives
 
-    async def _update_metadata_json(self, doc_id: str, doc_name: str, objectives: list[str]):
-        """
-        Atualiza incrementalmente o arquivo metadados.json na raiz do projeto
-        """
+    def _get_paragraph_text(self, paragraph: dict) -> str:
+        text_pieces = [
+            el.get("textRun", {}).get("content", "")
+            for el in paragraph.get("elements", [])
+        ]
+        return "".join(text_pieces).strip()
+
+    def _extract_texts_from_table(self, table: dict) -> list[str]:
+        texts = []
+        for row in table.get("tableRows", []):
+            for cell in row.get("tableCells", []):
+                for cell_element in cell.get("content", []):
+                    if "paragraph" in cell_element:
+                        paragraph = cell_element["paragraph"]
+                        paragraph_text = self._get_paragraph_text(paragraph)
+                        if paragraph_text:
+                            texts.append(paragraph_text)
+        return texts
+
+    def _extract_bncc_links(self, document_response: dict) -> list[str]:
+        bncc_links = []
+        seen = set()
+        body_content = document_response.get("body", {}).get("content", [])
+        in_bncc_section = False
+
+        headers_to_ignore = [
+            "BNCC LINK", "BNCC", "COMPETÊNCIAS GERAIS", "COMPETENCIAS GERAIS",
+            "COMPETÊNCIAS DA COMPUTAÇÃO", "PREMISSAS DA COMPUTAÇÃO", 
+            "DIREITOS DE APRENDIZAGEM"
+        ]
+
+        def process_element_text(text: str):
+            nonlocal in_bncc_section
+            if not text or not text.strip():
+                return
+
+            upper_text = text.strip().upper()
+            if "BNCC" in upper_text or "BNCC LINK" in upper_text:
+                in_bncc_section = True
+                return
+
+            if in_bncc_section:
+                if self._is_stop_header(text):
+                    in_bncc_section = False
+                    return
+
+                clean = self._clean_text(text)
+                if clean and clean not in seen:
+                    if clean.upper() in headers_to_ignore:
+                        return
+                    seen.add(clean)
+                    bncc_links.append(clean)
+
+        for element in body_content:
+            if "paragraph" in element:
+                p_text = self._get_paragraph_text(element["paragraph"])
+                process_element_text(p_text)
+
+            elif "table" in element:
+                table_texts = self._extract_texts_from_table(element["table"])
+                for text in table_texts:
+                    process_element_text(text)
+
+        return bncc_links
+
+    async def _update_metadata_json(self, doc_id: str, doc_name: str, objectives: list[str], bncc_links: list[str]):
         json_path = os.path.abspath("metadados.json")
         
         async with metadata_lock:
@@ -73,7 +178,8 @@ class GoogleDocsService:
             data.append({
                 "id": doc_id,
                 "nome": doc_name,
-                "objetivos": objectives
+                "objetivos": objectives,
+                "bncc_links": bncc_links
             })
 
             try:
@@ -92,8 +198,9 @@ class GoogleDocsService:
             
             doc_name = response.get("title", f"documento-{document_id}")
             objectives = self._extract_objectives(response)
+            bncc_links = self._extract_bncc_links(response)
             
-            await self._update_metadata_json(document_id, doc_name, objectives)
+            await self._update_metadata_json(document_id, doc_name, objectives, bncc_links)
 
             return self.transformer.convert_to_html(response)
         except Exception as e:
@@ -135,12 +242,7 @@ class GoogleDocsService:
                     path=output_path,
                     format="A4",
                     print_background=True,
-                    margin={
-                        "top": "2cm",
-                        "bottom": "2cm",
-                        "left": "2cm",
-                        "right": "2cm"
-                    }
+                    margin={"top": "2cm", "bottom": "2cm", "left": "2cm", "right": "2cm"}
                 )
                 await browser.close()
         finally:

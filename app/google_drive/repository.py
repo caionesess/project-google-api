@@ -121,3 +121,14 @@ class GoogleDriveFilesRepository:
             includeItemsFromAllDrives=True
         ).execute()
         return response.get("files", [])
+
+    def list_subfolders_in_folder(self, folder_id: str) -> list:
+        """Lista as subpastas diretas da pasta."""
+        query = f"'{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        response = self.drive.files().list(
+            q=query,
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        return response.get("files", [])

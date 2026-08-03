@@ -12,6 +12,8 @@ from app.core.config import settings
 from app.google_docs.router import router as google_docs_router
 from app.google_drive.router import router as google_drive_router
 from app.utils.health import router as health_router
+from app.google_docs.service import GoogleDocsService
+from app.google_drive.repository import GoogleDriveFilesRepository
 
 app = FastAPI(title="GDocs to HTML Reimplementation", debug=settings.DEBUG)
 
@@ -31,53 +33,57 @@ def extract_id_from_url(url: str) -> str:
     return url
 
 async def handle_cli_execution(target_url: str, output_format: str):
-    """Orquestra a extração e download via CLI salvando com o nome da pasta pai ou timestamp."""
-    import os
-    from datetime import datetime
-    from app.google_docs.service import GoogleDocsService
-    from app.google_drive.repository import GoogleDriveFilesRepository
-
+    """Orquestra a navegação em árvore, convertendo cada documento imediatamente."""
     target_id = extract_id_from_url(target_url)
     docs_service = GoogleDocsService()
     drive_repo = GoogleDriveFilesRepository()
 
-    try:
-        files = drive_repo.list_docs_in_folder(target_id)
-        is_folder = True
-    except Exception:
-        files = []
-        is_folder = False
-
-    if is_folder and files:
-        raw_folder_name = drive_repo.get_folder_name(target_id)
-        folder_name = re.sub(r'[\\/*?:"<>|]', "-", raw_folder_name)
-        folder_name = folder_name.strip()
-
-        target_dir = os.path.join("output", folder_name)
-    else:
-        files = [{"id": target_id, "name": f"documento-{target_id}"}]
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        target_dir = os.path.join("output", f"{output_format}-{timestamp}")
+    base_output_dir = "output"
     
-    os.makedirs(target_dir, exist_ok=True)
-    print(f"Diretório de destino definido: {target_dir}")
+    try:
+        raw_root_name = drive_repo.get_folder_name(target_id)
+        root_folder_name = re.sub(r'[\\/*?:"<>|]', "-", raw_root_name).strip()
+    except Exception:
+        root_folder_name = f"export-{target_id}"
 
-    for doc in files:
-        doc_id = doc["id"]
-        doc_name = doc["name"].replace("/", "-").replace("\\", "-").strip()
-        print(f"Processando: {doc_name} ({doc_id})")
+    root_path = os.path.join(base_output_dir, root_folder_name)
+    os.makedirs(root_path, exist_ok=True)
+    print(f"Diretório base de saída: {root_path}")
 
-        if output_format == "html":
-            file_path = os.path.join(target_dir, f"{doc_name}.html")
-            html_content = await docs_service.get_document_as_html(doc_id)
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(html_content)
-            print(f"Salvo com sucesso em: {file_path}")
-        
-        elif output_format == "pdf":
-            file_path = os.path.join(target_dir, f"{doc_name}.pdf")
-            await docs_service.get_document_as_pdf(doc_id, file_path)
-            print(f"Salvo com sucesso em: {file_path}")
+    async def _process_tree(current_id: str, current_dir: str):
+        docs = drive_repo.list_docs_in_folder(current_id)
+        for doc in docs:
+            doc_id = doc["id"]
+            sanitized_name = re.sub(r'[\\/*?:"<>|]', "-", doc["name"]).strip()
+            doc_name = f"{sanitized_name}_{doc_id}"
+            
+            print(f"➜ Processando: {doc['name']} ({doc_id}) em '{current_dir}'...")
+
+            try:
+                if output_format == "html":
+                    file_path = os.path.join(current_dir, f"{doc_name}.html")
+                    html_content = await docs_service.get_document_as_html(doc_id)
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(html_content)
+                    print(f"   ✔ Salvo: {file_path}")
+                
+                elif output_format == "pdf":
+                    file_path = os.path.join(current_dir, f"{doc_name}.pdf")
+                    await docs_service.get_document_as_pdf(doc_id, file_path)
+                    print(f"   ✔ Salvo: {file_path}")
+            except Exception as e:
+                print(f"   ❌ Erro ao converter {doc_name}: {e}")
+
+        subfolders = drive_repo.list_subfolders_in_folder(current_id)
+        for subfolder in subfolders:
+            folder_name = re.sub(r'[\\/*?:"<>|]', "-", subfolder["name"]).strip()
+            new_dir = os.path.join(current_dir, folder_name)
+            os.makedirs(new_dir, exist_ok=True)
+
+            await _process_tree(subfolder["id"], new_dir)
+
+    await _process_tree(target_id, root_path)
+    print("\n🎉 Processamento de toda a árvore concluído!")
 
 def run_cli():
     """Parser de argumentos para o modo de linha de comando."""
