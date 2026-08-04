@@ -83,7 +83,7 @@ async def handle_cli_execution(target_url: str, output_format: str):
             await _process_tree(subfolder["id"], new_dir)
 
     await _process_tree(target_id, root_path)
-    print("\n🎉 Processamento de toda a árvore concluído!")
+    print("\n🎉 Processamento de todas as pastas concluído!")
 
 def run_cli():
     """Parser de argumentos para o modo de linha de comando."""

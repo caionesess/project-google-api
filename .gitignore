@@ -19,6 +19,7 @@ htmlcov/
 .env
 *.json
 *.csv
+*.db
 
 # Google Service Account local
 credentials/google-service-account.json

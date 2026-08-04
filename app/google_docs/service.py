@@ -6,11 +6,27 @@ import re
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from app.core.config import settings
+from app.core.database import SqliteDatabase
 from app.google_docs.transform import GoogleDocsTransformer
+from app.scripts.json2csv import determinar_componente
 
 logger = logging.getLogger("uvicorn.error")
 
 metadata_lock = asyncio.Lock()
+
+
+def get_componente_from_response(document_response: dict) -> str:
+    return determinar_componente(document_response.get("title", ""))
+
+
+def get_material_from_response(document_response: dict) -> str:
+    """Retorna o campo `material` a ser persistido (stub)."""
+    return ""
+
+
+def get_unidade_from_response(document_response: dict) -> str:
+    """Retorna o campo `unidade` a ser persistido (stub)."""
+    return ""
 
 class GoogleDocsService:
     def __init__(self):
@@ -21,6 +37,7 @@ class GoogleDocsService:
         )
         self.client = build('docs', 'v1', credentials=self.credentials)
         self.transformer = GoogleDocsTransformer()
+        self.database = SqliteDatabase()
 
     def _clean_text(self, text: str) -> str:
         clean = text.replace('"', '').replace('\"', '').replace('\\', '')
@@ -189,6 +206,33 @@ class GoogleDocsService:
             except Exception as e:
                 logger.error(f"Erro ao gravar no arquivo metadados.json: {e}")
 
+    def _save_document_in_sqlite(
+        self,
+        material: str | None = None,
+        componente: str | None = None,
+        unidade: str | None = None,
+        nome: str | None = None,
+        conteudo_html: str | None = None,
+        bncc_link: list[str] | str | None = None,
+        lesson_objectives: list[str] | str | None = None,
+    ) -> None:
+        try:
+            bncc_str = json.dumps(bncc_link, ensure_ascii=False) if isinstance(bncc_link, list) else bncc_link
+            objectives_str = json.dumps(lesson_objectives, ensure_ascii=False) if isinstance(lesson_objectives, list) else lesson_objectives
+
+            self.database.upsert_document(
+                material=material,
+                componente=componente,
+                unidade=unidade,
+                nome=nome,
+                conteudo_html=conteudo_html,
+                bncc_link=bncc_str,
+                lesson_objectives=objectives_str,
+            )
+            logger.info(f"Documento {nome} atualizado no SQLite com sucesso.")
+        except Exception as e:
+            logger.error(f"Erro ao salvar documento no SQLite: {e}")
+
     async def get_document_as_html(self, document_id: str) -> str:
         try:
             logger.info(f"Buscando documento: {document_id}")
@@ -200,9 +244,25 @@ class GoogleDocsService:
             objectives = self._extract_objectives(response)
             bncc_links = self._extract_bncc_links(response)
             
+            html_content = self.transformer.convert_to_html(response)
+
             await self._update_metadata_json(document_id, doc_name, objectives, bncc_links)
 
-            return self.transformer.convert_to_html(response)
+            material = get_material_from_response(response)
+            componente = get_componente_from_response(response)
+            unidade = get_unidade_from_response(response)
+
+            self._save_document_in_sqlite(
+                material=material,
+                componente=componente,
+                unidade=unidade,
+                nome=doc_name,
+                conteudo_html=html_content,
+                bncc_link=bncc_links,
+                lesson_objectives=objectives,
+            )
+
+            return html_content
         except Exception as e:
             logger.error(f"Erro ao buscar documento: {str(e)}")
             raise e
