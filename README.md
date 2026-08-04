@@ -81,7 +81,7 @@ Por fim, configure as variáveis de ambiente conforme descrito na seção de Con
 Abre o documento do Google Docs, cria o diretório de destino `output/pdf-data-hora/` e gera o PDF final via Playwright.
 
 ```powershell
-uv run python app/main.py --print "[https://docs.google.com/document/d/ID_DO_SEU_DOCUMENTO/edit]"
+uv run python -m app.main --print "[https://docs.google.com/document/d/ID_DO_SEU_DOCUMENTO/edit]"
 ```
 
 #### B. Gerar HTML Individual
@@ -89,7 +89,7 @@ uv run python app/main.py --print "[https://docs.google.com/document/d/ID_DO_SEU
 Extrai a estrutura do Google Docs, cria o diretório de destino `output/html-data-hora/` e gera o arquivo `.html` local.
 
 ```powershell
-uv run python app/main.py --web "[https://docs.google.com/document/d/ID_DO_SEU_DOCUMENTO/edit]"
+uv run python -m app.main --web "https://docs.google.com/document/d/ID_DO_SEU_DOCUMENTO/edit"
 ```
 
 ### 2. Batch (Pasta do Google Drive)
@@ -101,7 +101,7 @@ Ao passar o link de uma **pasta** do Google Drive, o sistema listará todos os d
 Converte todos os documentos encontrados na pasta do Google Drive em arquivos PDF individuais dentro de `output/NOME_DA_SUA_PASTA/`.
 
 ```powershell
-uv run python app/main.py --print "[https://drive.google.com/drive/folders/ID_DA_SUA_PASTA]"
+uv run python -m app.main --print "[https://drive.google.com/drive/folders/ID_DA_SUA_PASTA]"
 ```
 
 #### B. Gerar HTMLs em Batch
@@ -109,7 +109,7 @@ uv run python app/main.py --print "[https://drive.google.com/drive/folders/ID_DA
 Extrai e gera os arquivos `.html` correspondentes para todos os documentos da pasta informada dentro de `output/NOME_DA_SUA_PASTA/`.
 
 ```powershell
-uv run python app/main.py --web "[https://drive.google.com/drive/folders/ID_DA_SUA_PASTA]"
+uv run python -m app.main --web "[https://drive.google.com/drive/folders/ID_DA_SUA_PASTA]"
 ```
 
 ### 3. Executar como Servidor Web (API FastAPI & Swagger)
