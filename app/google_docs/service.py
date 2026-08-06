@@ -3,6 +3,7 @@ import os
 import json
 import asyncio
 import re
+from pathlib import Path
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from app.core.config import settings
@@ -13,6 +14,18 @@ from app.scripts.json2csv import determinar_componente
 logger = logging.getLogger("uvicorn.error")
 
 metadata_lock = asyncio.Lock()
+
+
+def _find_project_root() -> Path:
+    current = Path(__file__).resolve()
+    if current.parent.name == "app":
+        return current.parents[1]
+    return current.parents[2]
+
+
+ROOT_DIR = _find_project_root()
+METADATA_JSON_PATH = ROOT_DIR / "metadados.json"
+STATIC_DIR = ROOT_DIR / "static"
 
 
 def get_componente_from_response(document_response: dict) -> str:
@@ -176,13 +189,11 @@ class GoogleDocsService:
         return bncc_links
 
     async def _update_metadata_json(self, doc_id: str, doc_name: str, objectives: list[str], bncc_links: list[str]):
-        json_path = os.path.abspath("metadados.json")
-        
         async with metadata_lock:
             data = []
-            if os.path.exists(json_path):
+            if METADATA_JSON_PATH.exists():
                 try:
-                    with open(json_path, "r", encoding="utf-8") as f:
+                    with METADATA_JSON_PATH.open("r", encoding="utf-8") as f:
                         data = json.load(f)
                         if not isinstance(data, list):
                             data = []
@@ -200,7 +211,7 @@ class GoogleDocsService:
             })
 
             try:
-                with open(json_path, "w", encoding="utf-8") as f:
+                with METADATA_JSON_PATH.open("w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=4)
                 logger.info(f"Metadados do documento {doc_id} salvos com sucesso.")
             except Exception as e:
@@ -272,17 +283,18 @@ class GoogleDocsService:
         Gera o PDF renderizando o HTML através de um navegador Chromium headless (Playwright).
         Garante fidelidade total a fontes web (Google Fonts), margens e regras de tabelas.
         """
-        import os
         from playwright.async_api import async_playwright
 
         html_content = await self.get_document_as_html(document_id)
-        absolute_static_path = os.path.abspath("static").replace("\\", "/")
+        absolute_static_path = str(STATIC_DIR.resolve()).replace("\\", "/")
         html_content = html_content.replace("../../static/", f"file:///{absolute_static_path}/")
 
-        target_dir = os.path.dirname(output_path)
-        temp_html_path = os.path.join(target_dir, f"temp_{document_id}.html")
-        
-        with open(temp_html_path, "w", encoding="utf-8") as f:
+        output_path_obj = Path(output_path)
+        target_dir = output_path_obj.parent
+        target_dir.mkdir(parents=True, exist_ok=True)
+        temp_html_path = target_dir / f"temp_{document_id}.html"
+
+        with temp_html_path.open("w", encoding="utf-8") as f:
             f.write(html_content)
 
         try:
@@ -290,16 +302,12 @@ class GoogleDocsService:
                 # Inicializa o navegador Chromium
                 browser = await p.chromium.launch(headless=True)
                 page = await browser.new_page()
-                
-                # Abre o arquivo HTML local
-                await page.goto(f"file:///{os.path.abspath(temp_html_path)}")
-                
-                # Aguarda o carregamento completo da rede (garante download de fontes do Google)
+                await page.goto(temp_html_path.resolve().as_uri())
                 await page.wait_for_load_state("networkidle")
                 
                 # Gera o PDF preservando o layout e as cores de fundo do CSS
                 await page.pdf(
-                    path=output_path,
+                    path=str(output_path_obj),
                     format="A4",
                     print_background=True,
                     margin={"top": "2cm", "bottom": "2cm", "left": "2cm", "right": "2cm"}

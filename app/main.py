@@ -4,6 +4,7 @@ import re
 import argparse
 import asyncio
 from datetime import datetime
+from pathlib import Path
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -15,9 +16,20 @@ from app.utils.health import router as health_router
 from app.google_docs.service import GoogleDocsService
 from app.google_drive.repository import GoogleDriveFilesRepository
 
+
+def _find_project_root() -> Path:
+    current = Path(__file__).resolve()
+    if current.parent.name == "app":
+        return current.parents[1]
+    return current.parents[2]
+
+
+ROOT_DIR = _find_project_root()
+OUTPUT_DIR = ROOT_DIR / "output"
+
 app = FastAPI(title="GDocs to HTML Reimplementation", debug=settings.DEBUG)
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=str(ROOT_DIR / "static")), name="static")
 app.include_router(health_router)
 app.include_router(google_docs_router)
 app.include_router(google_drive_router)
@@ -38,38 +50,38 @@ async def handle_cli_execution(target_url: str, output_format: str):
     docs_service = GoogleDocsService()
     drive_repo = GoogleDriveFilesRepository()
 
-    base_output_dir = "output"
-    
+    base_output_dir = OUTPUT_DIR
+
     try:
         raw_root_name = drive_repo.get_folder_name(target_id)
         root_folder_name = re.sub(r'[\\/*?:"<>|]', "-", raw_root_name).strip()
     except Exception:
         root_folder_name = f"export-{target_id}"
 
-    root_path = os.path.join(base_output_dir, root_folder_name)
-    os.makedirs(root_path, exist_ok=True)
+    root_path = base_output_dir / root_folder_name
+    root_path.mkdir(parents=True, exist_ok=True)
     print(f"Diretório base de saída: {root_path}")
 
-    async def _process_tree(current_id: str, current_dir: str):
+    async def _process_tree(current_id: str, current_dir: Path):
         docs = drive_repo.list_docs_in_folder(current_id)
         for doc in docs:
             doc_id = doc["id"]
             sanitized_name = re.sub(r'[\\/*?:"<>|]', "-", doc["name"]).strip()
             doc_name = f"{sanitized_name}_{doc_id}"
-            
+
             print(f"➜ Processando: {doc['name']} ({doc_id}) em '{current_dir}'...")
 
             try:
                 if output_format == "html":
-                    file_path = os.path.join(current_dir, f"{doc_name}.html")
+                    file_path = current_dir / f"{doc_name}.html"
                     html_content = await docs_service.get_document_as_html(doc_id)
-                    with open(file_path, "w", encoding="utf-8") as f:
+                    with file_path.open("w", encoding="utf-8") as f:
                         f.write(html_content)
                     print(f"   ✔ Salvo: {file_path}")
-                
+
                 elif output_format == "pdf":
-                    file_path = os.path.join(current_dir, f"{doc_name}.pdf")
-                    await docs_service.get_document_as_pdf(doc_id, file_path)
+                    file_path = current_dir / f"{doc_name}.pdf"
+                    await docs_service.get_document_as_pdf(doc_id, str(file_path))
                     print(f"   ✔ Salvo: {file_path}")
             except Exception as e:
                 print(f"   ❌ Erro ao converter {doc_name}: {e}")
@@ -77,13 +89,14 @@ async def handle_cli_execution(target_url: str, output_format: str):
         subfolders = drive_repo.list_subfolders_in_folder(current_id)
         for subfolder in subfolders:
             folder_name = re.sub(r'[\\/*?:"<>|]', "-", subfolder["name"]).strip()
-            new_dir = os.path.join(current_dir, folder_name)
-            os.makedirs(new_dir, exist_ok=True)
+            new_dir = current_dir / folder_name
+            new_dir.mkdir(parents=True, exist_ok=True)
 
             await _process_tree(subfolder["id"], new_dir)
 
     await _process_tree(target_id, root_path)
     print("\n🎉 Processamento de todas as pastas concluído!")
+
 
 def run_cli():
     """Parser de argumentos para o modo de linha de comando."""
@@ -91,12 +104,13 @@ def run_cli():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--print", help="Exporta o Alvo (Doc/Folder) no formato PDF")
     group.add_argument("--web", help="Exporta o Alvo (Doc/Folder) no formato HTML")
-    
+
     args = parser.parse_args()
     target_url = args.print if args.print else args.web
     output_format = "pdf" if args.print else "html"
-    
+
     asyncio.run(handle_cli_execution(target_url, output_format))
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):

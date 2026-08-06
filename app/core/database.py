@@ -2,20 +2,31 @@ import json
 import os
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 
 from app.core.config import settings
 
 
+def _find_project_root() -> Path:
+    current = Path(__file__).resolve()
+    if current.parent.name == "app":
+        return current.parents[1]
+    return current.parents[2]
+
+
+ROOT_DIR = _find_project_root()
+
+
 class SqliteDatabase:
     def __init__(self, db_path: str | None = None):
-        self.db_path = os.path.abspath(db_path or settings.SQLITE_DB_PATH)
+        self.db_path = str((ROOT_DIR / (db_path or settings.SQLITE_DB_PATH)).resolve())
         self._ensure_directory_exists()
         self._initialize_database()
 
     def _ensure_directory_exists(self) -> None:
-        directory = os.path.dirname(self.db_path)
-        if directory and not os.path.exists(directory):
-            os.makedirs(directory, exist_ok=True)
+        directory = Path(self.db_path).parent
+        if directory and not directory.exists():
+            directory.mkdir(parents=True, exist_ok=True)
 
     def _get_connection(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db_path)
@@ -60,8 +71,8 @@ class SqliteDatabase:
             conn.execute(
                 """
                 INSERT INTO documents (
-                    material, componente, unidade, nome, 
-                    conteudo_html, bncc_link, lesson_objectives, 
+                    material, componente, unidade, nome,
+                    conteudo_html, bncc_link, lesson_objectives,
                     created_at, updated_at
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -84,9 +95,9 @@ class SqliteDatabase:
         with self._get_connection() as conn:
             cursor = conn.execute(
                 """
-                SELECT id, material, componente, unidade, nome, 
-                       conteudo_html, bncc_link, lesson_objectives, 
-                       created_at, updated_at 
+                SELECT id, material, componente, unidade, nome,
+                       conteudo_html, bncc_link, lesson_objectives,
+                       created_at, updated_at
                 FROM documents WHERE id = ?
                 """,
                 (doc_id,),

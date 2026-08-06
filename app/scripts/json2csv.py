@@ -1,13 +1,20 @@
 import csv
 import json
-import os
+from pathlib import Path
 
 
-pasta_do_script = os.path.dirname(os.path.abspath(__file__))
+def _find_project_root() -> Path:
+    current = Path(__file__).resolve()
+    if current.parent.name == "app":
+        return current.parents[1]
+    return current.parents[2]
 
-caminho_json = os.path.abspath(
-    os.path.join(pasta_do_script, "..", "..", "metadados.json")
-)
+
+ROOT_DIR = _find_project_root()
+INPUT_DIR = ROOT_DIR / "input"
+OUTPUT_DIR = ROOT_DIR / "output"
+METADATA_JSON_PATH = ROOT_DIR / "metadados.json"
+
 
 def determinar_componente(nome_documento):
     """Determina o componente com base no nome do documento."""
@@ -43,14 +50,11 @@ def converter_json_para_csv(dados_json, nome_arquivo_saida="metadados.csv"):
         dados = dados_json
 
     headers = ["nome do documento", "id do documento", "componente", "objetivos"]
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = OUTPUT_DIR / nome_arquivo_saida
 
-    with open(
-        nome_arquivo_saida, mode="w", encoding="utf-8-sig", newline=""
-    ) as arquivo_csv:
-        escritor = csv.writer(
-            arquivo_csv, delimiter=",", quoting=csv.QUOTE_ALL
-        )
-
+    with output_path.open(mode="w", encoding="utf-8-sig", newline="") as arquivo_csv:
+        escritor = csv.writer(arquivo_csv, delimiter=",", quoting=csv.QUOTE_ALL)
         escritor.writerow(headers)
 
         for item in dados:
@@ -68,9 +72,14 @@ def converter_json_para_csv(dados_json, nome_arquivo_saida="metadados.csv"):
 
             escritor.writerow([nome, id_doc, componente, objetivos])
 
-    print(f"Arquivo CSV gerado com sucesso: '{nome_arquivo_saida}'")
+    print(f"Arquivo CSV gerado com sucesso: '{output_path}'")
 
 
-with open(caminho_json, 'r', encoding='utf-8') as f:
-    dados_do_arquivo = json.load(f)
-    converter_json_para_csv(dados_do_arquivo)
+def main() -> None:
+    with METADATA_JSON_PATH.open("r", encoding="utf-8") as f:
+        dados_do_arquivo = json.load(f)
+        converter_json_para_csv(dados_do_arquivo)
+
+
+if __name__ == "__main__":
+    main()
