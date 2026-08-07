@@ -55,12 +55,6 @@ class GoogleDocsTransformer:
         if style.get("lineSpacing"):
             css.append(f"line-height:{style['lineSpacing'] / 100}")
             
-        if style.get("spaceAbove", {}).get("magnitude"):
-            css.append(f"margin-top:{style['spaceAbove']['magnitude']}pt")
-            
-        if style.get("spaceBelow", {}).get("magnitude"):
-            css.append(f"margin-bottom:{style['spaceBelow']['magnitude']}pt")
-            
         if not ignore_indent and style.get("indentStart", {}).get("magnitude", 0) > 0:
             css.append(f"padding-left:{style['indentStart']['magnitude']}pt")
             
@@ -102,19 +96,13 @@ class GoogleDocsTransformer:
             
         if style.get("smallCaps"):
             css.append("font-variant:small-caps")
-            
-        if style.get("backgroundColor", {}).get("color", {}).get("rgbColor"):
-            css.append("color:white")
-        elif style.get("foregroundColor", {}).get("color", {}).get("rgbColor"):
+
+        if style.get("foregroundColor", {}).get("color", {}).get("rgbColor"):
             rgb = style["foregroundColor"]["color"]["rgbColor"]
             if not self.is_white_color(rgb):
                 has_real_color = any(k in rgb for k in ["red", "green", "blue"])
                 if has_real_color:
                     css.append(f"color:rgb({round(rgb.get('red', 0)*255)},{round(rgb.get('green', 0)*255)},{round(rgb.get('blue', 0)*255)})")
-                    
-        if style.get("backgroundColor", {}).get("color", {}).get("rgbColor"):
-            rgb = style["backgroundColor"]["color"]["rgbColor"]
-            css.append(f"background-color:rgb({round(rgb.get('red', 0)*255)},{round(rgb.get('green', 0)*255)},{round(rgb.get('blue', 0)*255)})")
             
         if style.get("baselineOffset") == "SUPERSCRIPT":
             css.append("vertical-align:super")
@@ -130,6 +118,39 @@ class GoogleDocsTransformer:
             
         return f'<span style="{style_attr}">{text}</span>'
 
+    def is_heading_paragraph(self, paragraph: dict) -> tuple[bool, int]:
+        paragraph_style = paragraph.get("paragraphStyle", {})
+        named_style = paragraph_style.get("namedStyleType", "")
+        heading_level = self.get_heading_level(named_style)
+        if heading_level:
+            return True, heading_level
+        
+        elements = paragraph.get("elements", [])
+        if not elements:
+            return False, 0
+            
+        full_text = ""
+        is_all_bold = True
+        has_text = False
+        
+        for elem in elements:
+            tr = elem.get("textRun", {})
+            content = tr.get("content", "").strip()
+            if content:
+                has_text = True
+                full_text += content + " "
+                st = tr.get("textStyle", {})
+                if not st.get("bold"):
+                    is_all_bold = False
+                    
+        full_text = full_text.strip()
+        
+        if has_text and len(full_text) < 80:
+            if is_all_bold or full_text.isupper() or paragraph_style.get("alignment") == "CENTER":
+                return True, 2
+                
+        return False, 0
+
     def process_paragraph(self, paragraph: dict, is_list_item: bool = False, ignore_indent: bool = False) -> str:
         elements = paragraph.get("elements", [])
         text = ""
@@ -140,32 +161,27 @@ class GoogleDocsTransformer:
                 
         text = text.strip()
         if not text:
-            return "" if is_list_item else "<br />"
+            return ""
             
         paragraph_style = paragraph.get("paragraphStyle", {})
         p_style = self.build_paragraph_css(paragraph_style, ignore_indent)
-        heading_level = self.get_heading_level(paragraph_style.get("namedStyleType", ""))
+        is_heading, heading_level = self.is_heading_paragraph(paragraph)
         
-        if heading_level:
-            return f'\n<h{heading_level} style="{p_style}">\n{text}\n</h{heading_level}>\n'
+        if is_heading and not is_list_item:
+            return f'HEADER_SPLIT_FLAG<h{heading_level} style="{p_style}">{text}</h{heading_level}>HEADER_SPLIT_FLAG'
             
         if is_list_item:
             return text
             
-        return f'\n<p style="{p_style}">\n{text}\n</p>\n'
+        return f'<p style="{p_style}">{text}</p>'
 
     def process_table(self, table: dict, lists: dict) -> str:
         rows = table.get("tableRows", [])
-        html = "<table>"
+        html = ""
         for row in rows:
-            html += "<tr>"
             cells = row.get("tableCells", [])
             for cell in cells:
-                html += "<td>"
                 html += self.process_content(cell.get("content", []), lists)
-                html += "</td>"
-            html += "</tr>"
-        html += "</table>"
         return html
 
     def process_header_footer(self, registry: dict, lists: dict, type_str: str) -> str:
@@ -236,7 +252,39 @@ class GoogleDocsTransformer:
                 
         if len(list_stack) > 0:
             html += close_lists(0)
+
+        if "HEADER_SPLIT_FLAG" in html:
+            parts = html.split("HEADER_SPLIT_FLAG")
+            formatted_html = ""
+            current_header = None
+            current_content = ""
             
+            def flush_section(header, body_text):
+                if not header:
+                    return body_text
+                
+                has_content = bool(body_text.strip())
+                has_content_class = " has-content" if has_content else ""
+                
+                if not has_content:
+                    return f'<div class="section-accordion"><div class="section-header">{header}</div></div>'
+                
+                return f'<details open class="section-accordion{has_content_class}"><summary class="section-header">{header}</summary><div class="section-content">{body_text}</div></details>'
+
+            for part in parts:
+                if not part:
+                    continue
+
+                if part.strip().startswith("<h"):
+                    formatted_html += flush_section(current_header, current_content)
+                    current_header = part.strip()
+                    current_content = ""
+                else:
+                    current_content += part
+
+            formatted_html += flush_section(current_header, current_content)
+            return formatted_html
+
         return html
 
     def convert_to_html(self, document: dict) -> str:
@@ -260,67 +308,71 @@ body {{
     color: black; 
     max-width: 900px; 
     margin: 0 auto; 
-    padding: 24px; 
+    padding: 16px; 
     font-family: 'Montserrat', sans-serif; 
 }}
 
-.table-header {{ width: 100%; border-collapse: collapse; margin-bottom: 0px; border: none; }}
-.table-header td {{ border: none; padding: 0; vertical-align: middle; }}
-.header-text-container {{ padding-left: 15px; text-align: left; }}
+p {{ margin: 0; padding-bottom: 2px; }}
+h1, h2, h3, h4, h5, h6 {{ margin: 0; display: inline-block; vertical-align: middle; }}
+ul, ol {{ margin-top: 2px; margin-bottom: 4px; padding-left: 20px; }}
+li {{ margin-bottom: 2px; }}
 
-p {{ margin: 0; padding-bottom: 6px; }}
-h1, h2, h3, h4, h5, h6 {{ margin-top: 0px; margin-bottom: 8px; }}
+.header {{ margin-bottom: 8px; }}
+.footer {{ margin-top: 8px; font-size: 10pt; color: #555555; }}
 
-table {{ border-collapse: collapse; width: 100%; margin: 12px 0; }}
-td {{ border: 1px solid #000; padding: 6px; vertical-align: top; }}
-ul, ol {{ margin-top: 6px; margin-bottom: 6px; }}
+.section-accordion {{
+    margin-bottom: 8px;
+    border: none;
+}}
 
-.header {{ margin-bottom: 0px; }}
-.doc-footer {{ display: flex; align-items: center; gap: 12px; margin-top: 5px; padding-top: 0px; border-top: none; }}
-.doc-footer-image {{ width: 60px; height: auto; object-fit: contain; flex-shrink: 0; }}
-.doc-footer-content {{ flex: 1; font-size: 12px; opacity: 0.8; }}
-.footer {{ margin-bottom: 0px; }}
+.section-header {{
+    user-select: none;
+    list-style: none;
+    outline: none;
+    margin-bottom: 2px;
+    display: inline-flex;
+    align-items: center;
+}}
 
-.table-footer {{ width: 100%; border-collapse: collapse; margin-top: 5px; border: none; }}
-.table-footer td {{ border: none; padding: 0; vertical-align: middle; }}
+summary.section-header {{
+    cursor: pointer;
+}}
+
+.section-header::-webkit-details-marker {{
+    display: none;
+}}
+
+.has-content > .section-header::after {{
+    content: "▸";
+    font-size: 11pt;
+    font-weight: bold;
+    margin-left: 10px;
+    display: inline-block;
+    vertical-align: middle;
+    transform: translateY(1px);
+    line-height: 1;
+    color: #44516B;
+}}
+
+details.has-content[open] > .section-header::after {{
+    content: "▾";
+    transform: translateY(0px);
+}}
+
+.section-content {{
+    padding: 2px 0;
+}}
 </style>
 </head>
 <body>
 
-<table class="table-header">
-    <tr>
-        <td style="width: 80px;">
-            <img src="../../static/be.png" width="75" height="75" style="display: block;" alt="BE logo" />
-        </td>
-        <td class="header-text-container">
-            {self.process_header_footer(headers, lists, 'header')}
-        </td>
-        <td style="width: 180px; text-align: right;">
-            <img src="../../static/be_details.png" width="170" style="display: block;" alt="BE details" />
-        </td>
-    </tr>
-</table>
+<header class="header">
+    {self.process_header_footer(headers, lists, 'header')}
+</header>
 
 <div class="content-body">
-"""
-        html += self.process_content(body, lists)
-        
-        html += f"""
+{self.process_content(body, lists)}
 </div>
-
-<table class="table-footer">
-    <tr>
-        <td style="width: 65px;">
-            <img src="../../static/be_footer.png" width="60" style="display: block;" alt="BE footer" />
-        </td>
-        <td style="padding-left: 15px; text-align: left; font-size: 10pt; color: #555555;">
-            {self.process_header_footer(footers, lists, 'footer')}
-        </td>
-        <td style="width: 65px; text-align: right;">
-            <img src="../../static/be_qrcode.png" width="60" style="display: block;" alt="BE QR Code" />
-        </td>
-    </tr>
-</table>
 
 </body>
 </html>
