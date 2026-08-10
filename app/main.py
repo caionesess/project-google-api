@@ -45,12 +45,36 @@ def extract_id_from_url(url: str) -> str:
     return url
 
 async def handle_cli_execution(target_url: str, output_format: str):
-    """Orquestra a navegação em árvore, convertendo cada documento imediatamente."""
+    """Orquestra o processamento: verifica se é um documento único ou uma pasta."""
     target_id = extract_id_from_url(target_url)
     docs_service = GoogleDocsService()
     drive_repo = GoogleDriveFilesRepository()
 
     base_output_dir = OUTPUT_DIR
+    base_output_dir.mkdir(parents=True, exist_ok=True)
+
+    if "document" in target_url:
+        print(f"➜ Processando arquivo único ({target_id})...")
+        try:
+            doc_name = f"documento_{target_id}"
+
+            if output_format == "html":
+                file_path = base_output_dir / f"{doc_name}.html"
+                html_content = await docs_service.get_document_as_html(target_id)
+                with file_path.open("w", encoding="utf-8") as f:
+                    f.write(html_content)
+                print(f"   ✅ Salvo: {file_path}")
+
+            elif output_format == "pdf":
+                file_path = base_output_dir / f"{doc_name}.pdf"
+                await docs_service.get_document_as_pdf(target_id, str(file_path))
+                print(f"   ✅ Salvo: {file_path}")
+
+            print("\n🎉 Processamento do documento concluído!")
+            return
+        except Exception as e:
+            print(f"   ❌ Erro ao converter documento {target_id}: {e}")
+            return
 
     try:
         raw_root_name = drive_repo.get_folder_name(target_id)
@@ -77,12 +101,12 @@ async def handle_cli_execution(target_url: str, output_format: str):
                     html_content = await docs_service.get_document_as_html(doc_id)
                     with file_path.open("w", encoding="utf-8") as f:
                         f.write(html_content)
-                    print(f"   ✔ Salvo: {file_path}")
+                    print(f"   ✅ Salvo: {file_path}")
 
                 elif output_format == "pdf":
                     file_path = current_dir / f"{doc_name}.pdf"
                     await docs_service.get_document_as_pdf(doc_id, str(file_path))
-                    print(f"   ✔ Salvo: {file_path}")
+                    print(f"   ✅ Salvo: {file_path}")
             except Exception as e:
                 print(f"   ❌ Erro ao converter {doc_name}: {e}")
 
