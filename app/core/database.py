@@ -42,6 +42,7 @@ class SqliteDatabase:
                     unidade TEXT,
                     nome TEXT,
                     conteudo_html TEXT,
+                    google_drive_link TEXT,
                     bncc_link TEXT,
                     lesson_objectives TEXT,
                     created_at TEXT NOT NULL,
@@ -53,6 +54,7 @@ class SqliteDatabase:
 
     def upsert_document(
         self,
+        doc_id: str | None = None,
         material: str | None = None,
         componente: str | None = None,
         unidade: str | None = None,
@@ -64,6 +66,8 @@ class SqliteDatabase:
         created_at = datetime.now().isoformat()
         updated_at = created_at
 
+        google_drive_link = f"https://docs.google.com/document/d/{doc_id}" if doc_id else None
+
         bncc_str = json.dumps(bncc_link, ensure_ascii=False) if isinstance(bncc_link, list) else bncc_link
         objectives_str = json.dumps(lesson_objectives, ensure_ascii=False) if isinstance(lesson_objectives, list) else lesson_objectives
 
@@ -72,10 +76,10 @@ class SqliteDatabase:
                 """
                 INSERT INTO documents (
                     material, componente, unidade, nome,
-                    conteudo_html, bncc_link, lesson_objectives,
+                    conteudo_html, google_drive_link, bncc_link, lesson_objectives,
                     created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     material,
@@ -83,6 +87,7 @@ class SqliteDatabase:
                     unidade,
                     nome,
                     conteudo_html,
+                    google_drive_link,
                     bncc_str,
                     objectives_str,
                     created_at,
@@ -91,16 +96,16 @@ class SqliteDatabase:
             )
             conn.commit()
 
-    def get_document(self, doc_id: int) -> dict | None:
+    def get_document(self, db_id: int) -> dict | None:
         with self._get_connection() as conn:
             cursor = conn.execute(
                 """
                 SELECT id, material, componente, unidade, nome,
-                       conteudo_html, bncc_link, lesson_objectives,
+                       conteudo_html, google_drive_link, bncc_link, lesson_objectives,
                        created_at, updated_at
                 FROM documents WHERE id = ?
                 """,
-                (doc_id,),
+                (db_id,),
             )
             row = cursor.fetchone()
             if not row:
@@ -121,8 +126,9 @@ class SqliteDatabase:
                 "unidade": row[3],
                 "nome": row[4],
                 "conteudo_html": row[5],
-                "bncc_link": _parse_json_or_text(row[6]),
-                "lesson_objectives": _parse_json_or_text(row[7]),
-                "created_at": row[8],
-                "updated_at": row[9],
+                "google_drive_link": row[6],
+                "bncc_link": _parse_json_or_text(row[7]),
+                "lesson_objectives": _parse_json_or_text(row[8]),
+                "created_at": row[9],
+                "updated_at": row[10],
             }

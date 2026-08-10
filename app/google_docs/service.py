@@ -32,25 +32,56 @@ def get_componente_from_response(document_response: dict) -> str:
     return determinar_componente(document_response.get("title", ""))
 
 
-def get_material_from_response(document_response: dict) -> str:
-    """Retorna o campo `material` a ser persistido (stub)."""
-    return ""
-
-
 def get_unidade_from_response(document_response: dict) -> str:
     """Retorna o campo `unidade` a ser persistido (stub)."""
     return ""
 
 class GoogleDocsService:
     def __init__(self):
-        self.scopes = ['https://www.googleapis.com/auth/documents.readonly']
+        self.scopes = [
+            'https://www.googleapis.com/auth/documents.readonly',
+            'https://www.googleapis.com/auth/drive.readonly'
+        ]
         self.credentials = service_account.Credentials.from_service_account_file(
             settings.GOOGLE_APPLICATION_CREDENTIALS, 
             scopes=self.scopes
         )
         self.client = build('docs', 'v1', credentials=self.credentials)
+        self.drive_client = build('drive', 'v3', credentials=self.credentials)
         self.transformer = GoogleDocsTransformer()
         self.database = SqliteDatabase()
+
+    def get_material_from_drive(self, document_id: str, local_output_path: str | Path | None = None) -> str:
+        """
+        Consulta o Google Drive para obter o nome da pasta pai (material).
+        """
+        try:
+            file_metadata = self.drive_client.files().get(
+                fileId=document_id,
+                fields="parents",
+                supportsAllDrives=True
+            ).execute()
+
+            parents = file_metadata.get("parents")
+            if parents:
+                parent_id = parents[0]
+                folder_metadata = self.drive_client.files().get(
+                    fileId=parent_id,
+                    fields="name",
+                    supportsAllDrives=True
+                ).execute()
+                
+                material_name = folder_metadata.get("name", "").strip()
+                if material_name:
+                    return material_name
+
+        except Exception as e:
+            logger.warning(f"Não foi possível obter pasta pai via Google Drive API ({e}). Usando fallback local...")
+
+        if local_output_path:
+            return Path(local_output_path).resolve().parent.name
+
+        return ""
 
     def _clean_text(self, text: str) -> str:
         clean = text.replace('"', '').replace('\"', '').replace('\\', '')
@@ -219,6 +250,7 @@ class GoogleDocsService:
 
     def _save_document_in_sqlite(
         self,
+        doc_id: str | None = None,
         material: str | None = None,
         componente: str | None = None,
         unidade: str | None = None,
@@ -232,6 +264,7 @@ class GoogleDocsService:
             objectives_str = json.dumps(lesson_objectives, ensure_ascii=False) if isinstance(lesson_objectives, list) else lesson_objectives
 
             self.database.upsert_document(
+                doc_id=doc_id,
                 material=material,
                 componente=componente,
                 unidade=unidade,
@@ -259,11 +292,12 @@ class GoogleDocsService:
 
             await self._update_metadata_json(document_id, doc_name, objectives, bncc_links)
 
-            material = get_material_from_response(response)
+            material = self.get_material_from_drive(document_id)
             componente = get_componente_from_response(response)
             unidade = get_unidade_from_response(response)
 
             self._save_document_in_sqlite(
+                doc_id=document_id,
                 material=material,
                 componente=componente,
                 unidade=unidade,
