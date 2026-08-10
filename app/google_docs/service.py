@@ -88,72 +88,6 @@ class GoogleDocsService:
         clean = clean.strip("• \t\r\n")
         return clean
 
-    def _is_stop_header(self, text: str) -> bool:
-        normalized = text.strip().upper()
-        stop_keywords = [
-            "SDG", "SDG LINK", "PROJECT", "PROJECT OUTCOME", "AREA OF STUDY", 
-            "RESOURCES", "RELEVANT LANGUAGE", "BEFORE THE LESSON", 
-            "SUGGESTED PROCEDURES", "PROCEDIMENTOS SUGERIDOS", "TEACHING TIPS",
-            "ANSWER KEY", "ADDITIONAL PRACTICE", "DESFECHO DO PROJETO", 
-            "PRÓXIMOS PASSOS", "DIRETRIZES GERAIS", "POSSIBILIDADES",
-            "LESSON 1", "LESSON 2", "LESSON 3", "LESSON 4", "LESSON 5",
-            "LIÇÃO 1", "LIÇÃO 2", "LIÇÃO 3", "LIÇÃO 4", "LIÇÃO 5", "PASSO 1"
-        ]
-        for kw in stop_keywords:
-            if normalized == kw or normalized.startswith(kw + " ") or normalized.startswith(kw + "\n"):
-                return True
-        return False
-
-    def _is_objective_header(self, text: str) -> bool:
-        normalized = text.strip().upper()
-        headers = [
-            "PROJECT OBJECTIVE", "PROJECT OBJECTIVES",
-            "LESSON OBJECTIVE", "LESSON OBJECTIVES",
-            "OBJETIVO DO PROJETO", "OBJETIVOS DO PROJETO"
-        ]
-        return any(h == normalized or normalized.startswith(h) for h in headers)
-
-    def _extract_objectives(self, document_response: dict) -> list[str]:
-        """
-        Varre a estrutura do Google Doc procurando por tabelas que contenham
-        a palavra 'objective' ou 'objetivo' e extrai os itens em formato bullet list
-        """
-        objectives = []
-        seen = set()
-        body_content = document_response.get("body", {}).get("content", [])
-        in_objective_section = False
-
-        def process_element_text(text: str):
-            nonlocal in_objective_section
-            if not text or not text.strip():
-                return
-
-            if self._is_objective_header(text):
-                in_objective_section = True
-                return
-
-            if in_objective_section:
-                if self._is_stop_header(text) or "BNCC" in text.upper():
-                    in_objective_section = False
-                    return
-
-                clean = self._clean_text(text)
-                if clean and clean not in seen and len(clean) > 3:
-                    seen.add(clean)
-                    objectives.append(clean)
-
-        for element in body_content:
-            if "paragraph" in element:
-                p_text = self._get_paragraph_text(element["paragraph"])
-                process_element_text(p_text)
-
-            elif "table" in element:
-                table_texts = self._extract_texts_from_table(element["table"])
-                for text in table_texts:
-                    process_element_text(text)
-
-        return objectives
-
     def _get_paragraph_text(self, paragraph: dict) -> str:
         text_pieces = [
             el.get("textRun", {}).get("content", "")
@@ -161,63 +95,101 @@ class GoogleDocsService:
         ]
         return "".join(text_pieces).strip()
 
-    def _extract_texts_from_table(self, table: dict) -> list[str]:
-        texts = []
-        for row in table.get("tableRows", []):
-            for cell in row.get("tableCells", []):
-                for cell_element in cell.get("content", []):
-                    if "paragraph" in cell_element:
-                        paragraph = cell_element["paragraph"]
-                        paragraph_text = self._get_paragraph_text(paragraph)
-                        if paragraph_text:
-                            texts.append(paragraph_text)
-        return texts
+    def _is_list_item(self, paragraph: dict) -> bool:
+        """
+        Verifica se o parágrafo é um item de lista (bullet points ou numeração).
+        """
+        if "bullet" in paragraph:
+            return True
+        
+        text = self._get_paragraph_text(paragraph).strip()
+        list_patterns = r'^([•\-*▪➢>]|\d+[\.\)]|[a-zA-Z][\.\)])\s+'
+        return bool(re.match(list_patterns, text))
 
-    def _extract_bncc_links(self, document_response: dict) -> list[str]:
-        bncc_links = []
+    def _extract_items_by_title(self, document_response: dict, target_titles: list[str]) -> list[str]:
+        """
+        Busca seções no documento com base nos títulos informados e extrai os itens.
+        Exceção: extrai bullet points/numerados OU qualquer texto contido em células de tabela.
+        """
+        items = []
         seen = set()
         body_content = document_response.get("body", {}).get("content", [])
-        in_bncc_section = False
+        
+        normalized_targets = [t.strip().upper() for t in target_titles]
+        in_target_section = False
 
-        headers_to_ignore = [
+        def is_target_header(text: str) -> bool:
+            norm_text = text.strip().upper()
+            return any(target == norm_text or norm_text.startswith(target) for target in normalized_targets)
+
+        def is_any_header(paragraph: dict) -> bool:
+            style_type = paragraph.get("paragraphStyle", {}).get("namedStyleType", "")
+            if style_type.startswith("HEADING_"):
+                return True
+            
+            elements = paragraph.get("elements", [])
+            full_text = self._get_paragraph_text(paragraph).strip()
+            if full_text and len(full_text) < 80:
+                is_all_bold = all(
+                    elem.get("textRun", {}).get("textStyle", {}).get("bold", False)
+                    for elem in elements if elem.get("textRun", {}).get("content", "").strip()
+                )
+                if is_all_bold or full_text.isupper():
+                    return True
+            return False
+
+        def add_item(text: str):
+            clean = self._clean_text(text)
+            if clean and clean not in seen and len(clean) > 2:
+                seen.add(clean)
+                items.append(clean)
+
+        def process_elements(elements_list: list, inside_table: bool = False):
+            nonlocal in_target_section
+
+            for element in elements_list:
+                if "paragraph" in element:
+                    paragraph = element["paragraph"]
+                    text = self._get_paragraph_text(paragraph)
+                    if not text:
+                        continue
+
+                    if is_target_header(text):
+                        in_target_section = True
+                        continue
+
+                    if in_target_section:
+                        if is_any_header(paragraph) and not is_target_header(text):
+                            in_target_section = False
+                            return
+
+                        if self._is_list_item(paragraph) or inside_table:
+                            add_item(text)
+
+                elif "table" in element:
+                    for row in element["table"].get("tableRows", []):
+                        for cell in row.get("tableCells", []):
+                            process_elements(cell.get("content", []), inside_table=True)
+
+        process_elements(body_content, inside_table=False)
+        return items
+
+    def _extract_objectives(self, document_response: dict) -> list[str]:
+        target_titles = [
+            "PROJECT OBJECTIVE", "PROJECT OBJECTIVES",
+            "LESSON OBJECTIVE", "LESSON OBJECTIVES",
+            "OBJETIVO DO PROJETO", "OBJETIVOS DO PROJETO",
+            "OBJETIVO DA AULA", "OBJETIVOS DA AULA"
+        ]
+        return self._extract_items_by_title(document_response, target_titles)
+
+    def _extract_bncc_links(self, document_response: dict) -> list[str]:
+        target_titles = [
             "BNCC LINK", "BNCC", "COMPETÊNCIAS GERAIS", "COMPETENCIAS GERAIS",
             "COMPETÊNCIAS DA COMPUTAÇÃO", "PREMISSAS DA COMPUTAÇÃO", 
             "DIREITOS DE APRENDIZAGEM"
         ]
-
-        def process_element_text(text: str):
-            nonlocal in_bncc_section
-            if not text or not text.strip():
-                return
-
-            upper_text = text.strip().upper()
-            if "BNCC" in upper_text or "BNCC LINK" in upper_text:
-                in_bncc_section = True
-                return
-
-            if in_bncc_section:
-                if self._is_stop_header(text):
-                    in_bncc_section = False
-                    return
-
-                clean = self._clean_text(text)
-                if clean and clean not in seen:
-                    if clean.upper() in headers_to_ignore:
-                        return
-                    seen.add(clean)
-                    bncc_links.append(clean)
-
-        for element in body_content:
-            if "paragraph" in element:
-                p_text = self._get_paragraph_text(element["paragraph"])
-                process_element_text(p_text)
-
-            elif "table" in element:
-                table_texts = self._extract_texts_from_table(element["table"])
-                for text in table_texts:
-                    process_element_text(text)
-
-        return bncc_links
+        return self._extract_items_by_title(document_response, target_titles)
 
     async def _update_metadata_json(self, doc_id: str, doc_name: str, objectives: list[str], bncc_links: list[str]):
         async with metadata_lock:
