@@ -135,8 +135,51 @@ Para enriquecer o pipeline de conversão sem comprometer a performance, o projet
 O script varre o documento de forma estruturada em busca de seções de objetivos pedagógicos organizadas em tabelas e listas de marcadores (*bullet points*). Ao final do processamento de cada arquivo, o sistema atualiza de forma incremental um catálogo unificado chamado `metadados.json` localizado na raiz do diretório de exportação.
 
 
-## Migração: Do `xhtml2pdf` para o `Playwright`
+## Migração: Do `Playwright` para o `WeasyPrint`
 
-O sistema utilizava a biblioteca `xhtml2pdf` (baseada no ReportLab). Essa abordagem causava graves problemas visuais:
-* **Problema:** O layout saía totalmente desfragmentado, pois o `xhtml2pdf` ignora CSS moderno (`display: flex`, `gap`, `flex-wrap`, etc.). Além disso, fontes dinâmicas da web (como a fonte Montserrat via Google Fonts) eram ignoradas, forçando fontes padrão do sistema e estourando os limites de espaçamento.
-* **Solução:** Substituição pelo **Playwright (Chromium Headless)**. Agora, o HTML é aberto dentro de uma instância real de um navegador em segundo plano, injetando as fontes de forma idêntica à web e gerando um PDF com paridade visual absoluta de 100%.
+O sistema utilizava anteriormente uma abordagem baseada em **Playwright (Chromium Headless)**. Embora o Playwright entregasse alta fidelidade visual, ele exigia a execução de uma instância inteira de um navegador web em segundo plano, resultando em alto consumo de memória RAM, inicialização mais lenta e maior complexidade de infraestrutura.
+
+Para otimizar o desempenho, reduzir o footprint da aplicação e manter a fidelidade visual sem depender de um navegador *headless*, o sistema adotou o **WeasyPrint**.
+
+### Comparativo: `Playwright` vs. `WeasyPrint`
+
+| Característica | Playwright (Chromium Headless) | WeasyPrint |
+| :--- | :--- | :--- |
+| **Arquitetura** | Abre um navegador Chromium completo em segundo plano para "printar" a página. | Motor de renderização direto em Python/C otimizado para *CSS Paged Media*. |
+| **Consumo de Memória** | **Alto** (~150MB a 500MB+ por instância de browser). | **Baixo** (~20MB a 50MB por conversão). |
+| **Velocidade de Execução** | Mais lento (tempo de boot do browser + navegação + rede). | Muito mais rápido (compilação direta do documento em memória). |
+| **Dependências de Sistema** | Binários pesados do Chromium/WebKit. | Bibliotecas nativas leves de renderização gráfica (Cairo, Pango, Fontconfig). |
+| **Padrões de CSS** | Suporta CSS Web moderno (`display: flex`, `grid`, Animações, JS). | Focado em normas W3C de impressão (`@page`, quebras de página, margens nativas). |
+| **Texto/Seleção no PDF** | Renderização baseada no layout de tela do browser. | Geração vetorial nativa de PDF com excelente precisão tipográfica. |
+
+---
+
+### Requisitos e Configuração do Ambiente
+
+Por utilizar chamadas nativas às bibliotecas C/C++ (*Cairo* e *Pango*), o WeasyPrint requer a instalação de dependências do sistema operacional antes da execução no ambiente Python.
+
+#### 1. Configuração no Windows
+
+No Windows, é necessário instalar o runtime do **GTK3** para fornecer as DLLs nativas de renderização.
+
+1. **Baixar o Instalador:** Baixe o executável do GTK3 na página de *releases* do [GTK for Windows Runtime Environment](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases) (exemplo: `gtk3-runtime-x.x.x-x64.exe`).
+2. **Instalação:** Execute o instalador e **certifique-se de marcar a opção `"Set up PATH environment variable"`** para que as DLLs fiquem acessíveis globalmente pelo sistema.
+3. **Variáveis e Terminal:** Após finalizar a instalação, reinicie o terminal, o VS Code ou o ambiente onde o projeto está sendo executado.
+
+#### 2. Configuração no Linux (Ubuntu / Debian)
+
+No Linux, as bibliotecas nativas devem ser instaladas via gerenciador de pacotes do sistema (`apt`).
+
+1. **Instalar Dependências Nativas do Sistema Operacional:**
+   ```bash
+   sudo apt-get update && sudo apt-get install -y \
+       build-essential \
+       python3-dev \
+       python3-cffi \
+       libcairo2 \
+       libpango-1.0-0 \
+       libpangocairo-1.0-0 \
+       libgdk-pixbuf2.0-0 \
+       libffi-dev \
+       shared-mime-info
+   ```

@@ -291,10 +291,9 @@ class GoogleDocsTransformer:
         body = document.get("body", {}).get("content", [])
         lists = document.get("lists", {})
         headers = document.get("headers", {})
-        footers = document.get("footers", {})
-        
+
         title = self.escape_html(document.get("title", "Documento"))
-        
+
         html = f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -362,6 +361,91 @@ details.has-content[open] > .section-header::after {{
 .section-content {{
     padding: 2px 0;
 }}
+</style>
+</head>
+<body>
+
+<header class="header">
+    {self.process_header_footer(headers, lists, 'header')}
+</header>
+
+<div class="content-body">
+{self.process_content(body, lists)}
+</div>
+
+</body>
+</html>
+"""
+        return html
+
+    def _build_print_css(self) -> str:
+        return """
+            @page {
+                size: A4;
+                margin: 1.5cm 1.5cm 2cm 1.5cm;
+            }
+
+            * { box-sizing: border-box; }
+            html, body {
+                margin: 0;
+                padding: 0;
+                background: white;
+                color: #111111;
+                font-family: 'Montserrat', sans-serif;
+                line-height: 1.5;
+            }
+
+            body {
+                max-width: 100%;
+                margin: 0 auto;
+                padding: 16px 0;
+                font-size: 12pt;
+            }
+
+            p { margin: 0; padding-bottom: 2px; }
+            h1, h2, h3, h4, h5, h6 {
+                margin: 0;
+                display: inline-block;
+                vertical-align: middle;
+                break-after: avoid;
+                page-break-after: avoid;
+            }
+            ul, ol { margin-top: 2px; margin-bottom: 4px; padding-left: 20px; }
+            li { margin-bottom: 2px; }
+            .header { margin-bottom: 8px; }
+            .footer { margin-top: 8px; font-size: 10pt; color: #555555; }
+            .section-accordion {
+                margin-bottom: 8px;
+                border: none;
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+            .section-header { user-select: none; list-style: none; outline: none; margin-bottom: 2px; display: inline-flex; align-items: center; }
+            summary.section-header { cursor: pointer; }
+            .section-header::-webkit-details-marker { display: none; }
+            .has-content > .section-header::after { content: "▸"; font-size: 11pt; font-weight: bold; margin-left: 10px; display: inline-block; vertical-align: middle; transform: translateY(1px); line-height: 1; color: #44516B; }
+            details.has-content[open] > .section-header::after { content: "▾"; transform: translateY(0px); }
+            .section-content { padding: 2px 0; }
+            details, summary { display: block !important; }
+            details > summary::after { display: none !important; }
+        """
+
+    def convert_to_print_html(self, document: dict) -> str:
+        body = document.get("body", {}).get("content", [])
+        lists = document.get("lists", {})
+        headers = document.get("headers", {})
+
+        title = self.escape_html(document.get("title", "Documento"))
+        css = self._build_print_css()
+
+        html = f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>{title}</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+{css}
 </style>
 </head>
 <body>

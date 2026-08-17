@@ -1,8 +1,7 @@
 """
 Google Docs Module
 
-Provides a unified interface for Google Docs structural extraction and semantic conversion into HTML and PDF documents. 
-Uses Playwright alongside lazy imports to optimize application startup.
+Provides a unified interface for Google Docs structural extraction and semantic conversion into HTML and PDF documents.
 """
 from typing import TYPE_CHECKING
 from importlib import import_module
