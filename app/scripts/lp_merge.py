@@ -67,7 +67,10 @@ de_para_materiais = {
     "21st CC 2 - 2nd ed.": "21CC Book 2 |  2nd edition",
     "21st CC 3 - 2nd ed.": "21CC Book 3 |  2nd edition",
     "21st CC 4 - 2nd ed.": "21CC Book 4 |  2nd edition",
-    "Explorations 3 (3 aulas)": "Explorations 3 | 3 aulas"
+    "Explorations 3 (3 aulas)": "Explorations 3 | 3 aulas",
+    "Science Booklet G3": "Science | G3",
+    "Science Booklet G4": "Science | G4",
+    "Science Booklet G5": "Science | G5"
 }
 
 de_para_stm = {
