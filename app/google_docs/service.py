@@ -249,18 +249,22 @@ class GoogleDocsService:
         except Exception as e:
             logger.error(f"Erro ao salvar documento no SQLite: {e}")
 
-    async def get_document_as_html(self, document_id: str) -> str:
+    async def _render_document_html(self, document_id: str, *, for_print: bool = False) -> str:
         try:
             logger.info(f"Buscando documento: {document_id}")
             response = self.client.documents().get(documentId=document_id).execute()
             if not response:
                 raise ValueError("Documento não encontrado")
-            
+
             doc_name = response.get("title", f"documento-{document_id}")
             objectives = self._extract_objectives(response)
             bncc_links = self._extract_bncc_links(response)
-            
-            html_content = self.transformer.convert_to_html(response)
+
+            html_content = (
+                self.transformer.convert_to_print_html(response)
+                if for_print
+                else self.transformer.convert_to_html(response)
+            )
 
             await self._update_metadata_json(document_id, doc_name, objectives, bncc_links)
 
@@ -284,42 +288,27 @@ class GoogleDocsService:
             logger.error(f"Erro ao buscar documento: {str(e)}")
             raise e
 
+    async def get_document_as_html(self, document_id: str) -> str:
+        return await self._render_document_html(document_id, for_print=False)
+
+    async def get_document_as_print_html(self, document_id: str) -> str:
+        return await self._render_document_html(document_id, for_print=True)
+
     async def get_document_as_pdf(self, document_id: str, output_path: str) -> None:
         """
-        Gera o PDF renderizando o HTML através de um navegador Chromium headless (Playwright).
-        Garante fidelidade total a fontes web (Google Fonts), margens e regras de tabelas.
+        Gera o PDF a partir do HTML otimizado para impressão.
+        A conversão final é feita com WeasyPrint, quando disponível.
         """
-        from playwright.async_api import async_playwright
+        try:
+            from weasyprint import HTML
+        except ImportError as exc:
+            raise RuntimeError(
+                "Biblioteca 'weasyprint' não está instalada. Instale com: pip install weasyprint"
+            ) from exc
 
-        html_content = await self.get_document_as_html(document_id)
-        absolute_static_path = str(STATIC_DIR.resolve()).replace("\\", "/")
-        html_content = html_content.replace("../../static/", f"file:///{absolute_static_path}/")
+        html_content = await self.get_document_as_print_html(document_id)
 
         output_path_obj = Path(output_path)
-        target_dir = output_path_obj.parent
-        target_dir.mkdir(parents=True, exist_ok=True)
-        temp_html_path = target_dir / f"temp_{document_id}.html"
+        output_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
-        with temp_html_path.open("w", encoding="utf-8") as f:
-            f.write(html_content)
-
-        try:
-            async with async_playwright() as p:
-                # Inicializa o navegador Chromium
-                browser = await p.chromium.launch(headless=True)
-                page = await browser.new_page()
-                await page.goto(temp_html_path.resolve().as_uri())
-                await page.wait_for_load_state("networkidle")
-                
-                # Gera o PDF preservando o layout e as cores de fundo do CSS
-                await page.pdf(
-                    path=str(output_path_obj),
-                    format="A4",
-                    print_background=True,
-                    margin={"top": "2cm", "bottom": "2cm", "left": "2cm", "right": "2cm"}
-                )
-                await browser.close()
-        finally:
-            # Remove o arquivo temporário criado para a renderização
-            if os.path.exists(temp_html_path):
-                os.remove(temp_html_path)
+        HTML(string=html_content).write_pdf(target=str(output_path_obj))
