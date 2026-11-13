@@ -103,31 +103,3 @@ O que é possível fazer no modo Servidor Web:
 * Conversão via Requisições HTTP: Disparar chamadas para os módulos de `/google-docs` e `/google-drive` para extrair dados ou gerenciar arquivos dinamicamente.
 
 * Testes em Tempo Real ("Try it out"): Enviar IDs de documentos e pastas diretamente pela interface web do Swagger e inspecionar imediatamente as estruturas JSON de resposta, os payloads e os códigos de status retornados pelo pipeline.
-
----
-
-#### 1. Configuração no Windows
-
-No Windows, é necessário instalar o runtime do **GTK3** para fornecer as DLLs nativas de renderização.
-
-1. **Baixar o Instalador:** Baixe o executável do GTK3 na página de *releases* do [GTK for Windows Runtime Environment](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases) (exemplo: `gtk3-runtime-x.x.x-x64.exe`).
-2. **Instalação:** Execute o instalador e **certifique-se de marcar a opção `"Set up PATH environment variable"`** para que as DLLs fiquem acessíveis globalmente pelo sistema.
-3. **Variáveis e Terminal:** Após finalizar a instalação, reinicie o terminal, o VS Code ou o ambiente onde o projeto está sendo executado.
-
-#### 2. Configuração no Linux (Ubuntu / Debian)
-
-No Linux, as bibliotecas nativas devem ser instaladas via gerenciador de pacotes do sistema (`apt`).
-
-1. **Instalar Dependências Nativas do Sistema Operacional:**
-   ```bash
-   sudo apt-get update && sudo apt-get install -y \
-       build-essential \
-       python3-dev \
-       python3-cffi \
-       libcairo2 \
-       libpango-1.0-0 \
-       libpangocairo-1.0-0 \
-       libgdk-pixbuf2.0-0 \
-       libffi-dev \
-       shared-mime-info
-   ```
