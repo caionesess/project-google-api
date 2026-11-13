@@ -1,6 +1,9 @@
 ## Description
 
-Pipeline automatizado em Python que converte documentos do Google Docs em arquivos HTML e PDF via Google API e Playwright.
+Este projeto é uma solução em Python para automatizar a conversão de documentos do Google Docs em arquivos HTML estruturados, utilizando a Google API para leitura do conteúdo e transformação em HTML pronto para uso em aplicações web, documentos estáticos ou exportação local.
+
+Além da extração e transformação de conteúdo, o sistema também oferece uma interface de linha de comando (CLI) e suporte para execução via API REST com FastAPI, tornando o fluxo de conversão útil tanto para automações locais quanto para integrações com outros serviços ou aplicações.
+
 ## Configuração
 
 #### 1. Credenciais do Google Cloud
@@ -62,29 +65,11 @@ uv sync
 
 Este comando lê o arquivo `pyproject.toml`, cria automaticamente a pasta `.venv` (ambiente virtual/VM) e instala todas as dependências listadas de forma isolada.
 
-#### 3. Instalação das Dependências do Navegador (Playwright)
-
-```
-uv run playwright install chromium
-```
-
-O Playwright precisa dos binários nativos do Chromium instalados dentro do contexto do ambiente virtual para realizar a impressão dos PDFs.
-
-Por fim, configure as variáveis de ambiente conforme descrito na seção de Configuração acima.
-
 ## Compile and run the project
 
 ### 1. Individual (Um único Google Doc)
 
-#### A. Gerar PDF Individual
-
-Abre o documento do Google Docs, cria o diretório de destino `output/pdf-data-hora/` e gera o PDF final via Playwright.
-
-```powershell
-uv run python -m app.main --print "[https://docs.google.com/document/d/ID_DO_SEU_DOCUMENTO/edit]"
-```
-
-#### B. Gerar HTML Individual
+#### Gerar HTML Individual
 
 Extrai a estrutura do Google Docs, cria o diretório de destino `output/html-data-hora/` e gera o arquivo `.html` local.
 
@@ -96,15 +81,7 @@ uv run python -m app.main --web "https://docs.google.com/document/d/ID_DO_SEU_DO
 
 Ao passar o link de uma **pasta** do Google Drive, o sistema listará todos os documentos contidos nela e processará em lote.
 
-#### A. Gerar PDFs em Batch
-
-Converte todos os documentos encontrados na pasta do Google Drive em arquivos PDF individuais dentro de `output/NOME_DA_SUA_PASTA/`.
-
-```powershell
-uv run python -m app.main --print "[https://drive.google.com/drive/folders/ID_DA_SUA_PASTA]"
-```
-
-#### B. Gerar HTMLs em Batch
+#### Gerar HTMLs em Batch
 
 Extrai e gera os arquivos `.html` correspondentes para todos os documentos da pasta informada dentro de `output/NOME_DA_SUA_PASTA/`.
 
@@ -127,36 +104,7 @@ O que é possível fazer no modo Servidor Web:
 
 * Testes em Tempo Real ("Try it out"): Enviar IDs de documentos e pastas diretamente pela interface web do Swagger e inspecionar imediatamente as estruturas JSON de resposta, os payloads e os códigos de status retornados pelo pipeline.
 
-
-## Mineração de Dados e Persistência de Metadados
-
-Para enriquecer o pipeline de conversão sem comprometer a performance, o projeto realiza um processo de **Data Mining** (Mineração de Texto) diretamente na estrutura do Google Doc antes de sua renderização final. A extração foi isolada no módulo de serviço (`service.py`), desvinculando as regras de negócio analíticas do motor de transformações visuais (`transform.py`). 
-
-O script varre o documento de forma estruturada em busca de seções de objetivos pedagógicos organizadas em tabelas e listas de marcadores (*bullet points*). Ao final do processamento de cada arquivo, o sistema atualiza de forma incremental um catálogo unificado chamado `metadados.json` localizado na raiz do diretório de exportação.
-
-
-## Migração: Do `Playwright` para o `WeasyPrint`
-
-O sistema utilizava anteriormente uma abordagem baseada em **Playwright (Chromium Headless)**. Embora o Playwright entregasse alta fidelidade visual, ele exigia a execução de uma instância inteira de um navegador web em segundo plano, resultando em alto consumo de memória RAM, inicialização mais lenta e maior complexidade de infraestrutura.
-
-Para otimizar o desempenho, reduzir o footprint da aplicação e manter a fidelidade visual sem depender de um navegador *headless*, o sistema adotou o **WeasyPrint**.
-
-### Comparativo: `Playwright` vs. `WeasyPrint`
-
-| Característica | Playwright (Chromium Headless) | WeasyPrint |
-| :--- | :--- | :--- |
-| **Arquitetura** | Abre um navegador Chromium completo em segundo plano para "printar" a página. | Motor de renderização direto em Python/C otimizado para *CSS Paged Media*. |
-| **Consumo de Memória** | **Alto** (~150MB a 500MB+ por instância de browser). | **Baixo** (~20MB a 50MB por conversão). |
-| **Velocidade de Execução** | Mais lento (tempo de boot do browser + navegação + rede). | Muito mais rápido (compilação direta do documento em memória). |
-| **Dependências de Sistema** | Binários pesados do Chromium/WebKit. | Bibliotecas nativas leves de renderização gráfica (Cairo, Pango, Fontconfig). |
-| **Padrões de CSS** | Suporta CSS Web moderno (`display: flex`, `grid`, Animações, JS). | Focado em normas W3C de impressão (`@page`, quebras de página, margens nativas). |
-| **Texto/Seleção no PDF** | Renderização baseada no layout de tela do browser. | Geração vetorial nativa de PDF com excelente precisão tipográfica. |
-
 ---
-
-### Requisitos e Configuração do Ambiente
-
-Por utilizar chamadas nativas às bibliotecas C/C++ (*Cairo* e *Pango*), o WeasyPrint requer a instalação de dependências do sistema operacional antes da execução no ambiente Python.
 
 #### 1. Configuração no Windows
 

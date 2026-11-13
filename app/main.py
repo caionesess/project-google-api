@@ -1,9 +1,7 @@
-import os
 import sys
 import re
 import argparse
 import asyncio
-from datetime import datetime
 from pathlib import Path
 import uvicorn
 from fastapi import FastAPI
@@ -65,11 +63,6 @@ async def handle_cli_execution(target_url: str, output_format: str):
                     f.write(html_content)
                 print(f"   ✅ Salvo: {file_path}")
 
-            elif output_format == "pdf":
-                file_path = base_output_dir / f"{doc_name}.pdf"
-                await docs_service.get_document_as_pdf(target_id, str(file_path))
-                print(f"   ✅ Salvo: {file_path}")
-
             print("\n🎉 Processamento do documento concluído!")
             return
         except Exception as e:
@@ -102,11 +95,6 @@ async def handle_cli_execution(target_url: str, output_format: str):
                     with file_path.open("w", encoding="utf-8") as f:
                         f.write(html_content)
                     print(f"   ✅ Salvo: {file_path}")
-
-                elif output_format == "pdf":
-                    file_path = current_dir / f"{doc_name}.pdf"
-                    await docs_service.get_document_as_pdf(doc_id, str(file_path))
-                    print(f"   ✅ Salvo: {file_path}")
             except Exception as e:
                 print(f"   ❌ Erro ao converter {doc_name}: {e}")
 
@@ -126,12 +114,11 @@ def run_cli():
     """Parser de argumentos para o modo de linha de comando."""
     parser = argparse.ArgumentParser(description="GDocs to HTML/PDF CLI tool")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--print", help="Exporta o Alvo (Doc/Folder) no formato PDF")
     group.add_argument("--web", help="Exporta o Alvo (Doc/Folder) no formato HTML")
 
     args = parser.parse_args()
-    target_url = args.print if args.print else args.web
-    output_format = "pdf" if args.print else "html"
+    target_url = args.web
+    output_format = "html"
 
     asyncio.run(handle_cli_execution(target_url, output_format))
 

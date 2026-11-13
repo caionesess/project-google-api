@@ -1,17 +1,12 @@
 import html as html_modifier
+import re
 
 class GoogleDocsTransformer:
     def __init__(self):
-        pass
+        self.header_titles_captured = 0
 
     def escape_html(self, text: str) -> str:
         return html_modifier.escape(text)
-
-    def is_white_color(self, rgb: dict) -> bool:
-        r = round((rgb.get("red", 0)) * 255)
-        g = round((rgb.get("green", 0)) * 255)
-        b = round((rgb.get("blue", 0)) * 255)
-        return r >= 250 and g >= 250 and b >= 250
 
     def get_heading_level(self, style_type: str) -> int | None:
         heading_map = {
@@ -43,146 +38,103 @@ class GoogleDocsTransformer:
         return "ul"
 
     def build_paragraph_css(self, style: dict, ignore_indent: bool = False) -> str:
-        if not style:
-            return ""
-        
-        css = []
-        align_map = {"START": "left", "CENTER": "center", "END": "right", "JUSTIFIED": "justify"}
-        
-        if style.get("alignment"):
-            css.append(f"text-align:{align_map.get(style['alignment'], 'left')}")
-            
-        if style.get("lineSpacing"):
-            css.append(f"line-height:{style['lineSpacing'] / 100}")
-            
-        if not ignore_indent and style.get("indentStart", {}).get("magnitude", 0) > 0:
-            css.append(f"padding-left:{style['indentStart']['magnitude']}pt")
-            
-        if not ignore_indent and style.get("indentFirstLine", {}).get("magnitude", 0) > 0:
-            css.append(f"text-indent:{style['indentFirstLine']['magnitude']}pt")
-            
-        if style.get("keepLinesTogether"):
-            css.append("page-break-inside:avoid")
-            
-        return ";".join(css)
+        return ""
 
-    def format_text_run(self, text_run: dict) -> str:
+    def format_text_run(self, text_run: dict, strip_bold: bool = False) -> str:
         text = self.escape_html(text_run.get("content", ""))
         text = text.rstrip("\n")
         
+        if not text:
+            return ""
+
         style = text_run.get("textStyle", {})
         if not style:
-            return f'<span>{text}</span>'
-            
-        css = []
-        
-        if style.get("weightedFontFamily", {}).get("fontFamily"):
-            css.append(f"font-family:{style['weightedFontFamily']['fontFamily']}")
-            
-        if style.get("fontSize", {}).get("magnitude"):
-            css.append(f"font-size:{style['fontSize']['magnitude']}pt")
-            
-        if style.get("bold"):
-            css.append("font-weight:bold")
-            
-        if style.get("italic"):
-            css.append("font-style:italic")
-            
-        if style.get("underline"):
-            css.append("text-decoration:underline")
-            
-        if style.get("strikethrough"):
-            css.append("text-decoration:line-through")
-            
-        if style.get("smallCaps"):
-            css.append("font-variant:small-caps")
+            return text
 
-        if style.get("foregroundColor", {}).get("color", {}).get("rgbColor"):
-            rgb = style["foregroundColor"]["color"]["rgbColor"]
-            if not self.is_white_color(rgb):
-                has_real_color = any(k in rgb for k in ["red", "green", "blue"])
-                if has_real_color:
-                    css.append(f"color:rgb({round(rgb.get('red', 0)*255)},{round(rgb.get('green', 0)*255)},{round(rgb.get('blue', 0)*255)})")
-            
-        if style.get("baselineOffset") == "SUPERSCRIPT":
-            css.append("vertical-align:super")
-            css.append("font-size:smaller")
-        elif style.get("baselineOffset") == "SUBSCRIPT":
-            css.append("vertical-align:sub")
-            css.append("font-size:smaller")
-            
-        style_attr = ";".join(css)
-        
         if style.get("link", {}).get("url"):
-            return f'<a href="{style["link"]["url"]}" style="{style_attr}">{text}</a>'
-            
-        return f'<span style="{style_attr}">{text}</span>'
+            return f'<a href="{style["link"]["url"]}">{text}</a>'
+
+        return text
 
     def is_heading_paragraph(self, paragraph: dict) -> tuple[bool, int]:
+        if paragraph.get("bullet"):
+            return False, 0
+
+        elements = paragraph.get("elements", [])
+        if not elements:
+            return False, 0
+
+        full_text = "".join(elem.get("textRun", {}).get("content", "") for elem in elements).strip()
+        if not full_text or full_text.startswith("(") or len(full_text) > 80:
+            return False, 0
+
         paragraph_style = paragraph.get("paragraphStyle", {})
         named_style = paragraph_style.get("namedStyleType", "")
         heading_level = self.get_heading_level(named_style)
         if heading_level:
             return True, heading_level
-        
-        elements = paragraph.get("elements", [])
-        if not elements:
-            return False, 0
+
+        if full_text.isupper() and len(full_text.split()) <= 5:
+            return True, 1
+
+        lower_text = full_text.lower()
+        if lower_text.startswith("step "):
+            return True, 2
             
-        full_text = ""
-        is_all_bold = True
-        has_text = False
-        
-        for elem in elements:
-            tr = elem.get("textRun", {})
-            content = tr.get("content", "").strip()
-            if content:
-                has_text = True
-                full_text += content + " "
-                st = tr.get("textStyle", {})
-                if not st.get("bold"):
-                    is_all_bold = False
-                    
-        full_text = full_text.strip()
-        
-        if has_text and len(full_text) < 80:
-            if is_all_bold or full_text.isupper() or paragraph_style.get("alignment") == "CENTER":
-                return True, 2
-                
         return False, 0
 
     def process_paragraph(self, paragraph: dict, is_list_item: bool = False, ignore_indent: bool = False) -> str:
         elements = paragraph.get("elements", [])
-        text = ""
+        full_raw_text = "".join(elem.get("textRun", {}).get("content", "") for elem in elements).strip()
         
+        if not full_raw_text:
+            return ""
+
+        is_bncc_desc = full_raw_text.startswith("(") and bool(re.search(r"^\([A-Z0-9]+\)", full_raw_text))
+
+        text = ""
         for elem in elements:
             if elem.get("textRun", {}).get("content", "").strip():
-                text += self.format_text_run(elem["textRun"])
+                text += self.format_text_run(elem["textRun"], strip_bold=is_bncc_desc)
                 
         text = text.strip()
         if not text:
             return ""
-            
+
+        if is_bncc_desc and text.isupper():
+            text = text.capitalize()
+
         paragraph_style = paragraph.get("paragraphStyle", {})
         p_style = self.build_paragraph_css(paragraph_style, ignore_indent)
+
+        if not is_list_item and self.header_titles_captured < 2:
+            self.header_titles_captured += 1
+            text_upper = text.upper()
+            return f'HEADER_SPLIT_FLAG<h1>{text_upper}</h1>HEADER_SPLIT_FLAG'
+
         is_heading, heading_level = self.is_heading_paragraph(paragraph)
         
         if is_heading and not is_list_item:
-            return f'HEADER_SPLIT_FLAG<h{heading_level} style="{p_style}">{text}</h{heading_level}>HEADER_SPLIT_FLAG'
+            return f'HEADER_SPLIT_FLAG<h{heading_level}>{text}</h{heading_level}>HEADER_SPLIT_FLAG'
             
         if is_list_item:
             return text
             
-        return f'<p style="{p_style}">{text}</p>'
+        return f'<p>{text}</p>'
 
-    def process_table(self, table: dict, lists: dict) -> str:
-        rows = table.get("tableRows", [])
-        html = ""
-        for row in rows:
-            cells = row.get("tableCells", [])
-            for cell in cells:
-                html += self.process_content(cell.get("content", []), lists)
-        return html
+    def flatten_elements(self, content: list) -> list:
+        """Extrai todos os elementos de forma 100% linear, desmontando tabelas para evitar colunas paralelas."""
+        flat = []
+        for element in content:
+            if element.get("paragraph"):
+                flat.append(element)
+            elif element.get("table"):
+                for row in element["table"].get("tableRows", []):
+                    for cell in row.get("tableCells", []):
+                        flat.extend(self.flatten_elements(cell.get("content", [])))
+            elif element.get("sectionBreak"):
+                flat.append(element)
+        return flat
 
     def process_header_footer(self, registry: dict, lists: dict, type_str: str) -> str:
         html = ""
@@ -200,6 +152,9 @@ class GoogleDocsTransformer:
     def process_content(self, content: list, lists: dict = None, ignore_indent: bool = False) -> str:
         if lists is None:
             lists = {}
+        
+        elements = self.flatten_elements(content)
+        
         html = ""
         list_stack = []
         
@@ -226,7 +181,7 @@ class GoogleDocsTransformer:
                     list_stack.append({"listId": list_id, "type": list_type, "level": i})
             return res
 
-        for element in content:
+        for element in elements:
             if element.get("paragraph"):
                 paragraph = element["paragraph"]
                 if paragraph.get("bullet"):
@@ -238,227 +193,94 @@ class GoogleDocsTransformer:
                     
                 if len(list_stack) > 0:
                     html += close_lists(0)
-                html += self.process_paragraph(paragraph, is_list_item=False, ignore_indent=ignore_indent)
                 
-            elif element.get("table"):
-                if len(list_stack) > 0:
-                    html += close_lists(0)
-                html += self.process_table(element["table"], lists)
+                html += self.process_paragraph(paragraph, is_list_item=False, ignore_indent=ignore_indent)
                 
             elif element.get("sectionBreak"):
                 if len(list_stack) > 0:
                     html += close_lists(0)
-                html += ""
+                html += "<hr />"
                 
         if len(list_stack) > 0:
             html += close_lists(0)
 
         if "HEADER_SPLIT_FLAG" in html:
             parts = html.split("HEADER_SPLIT_FLAG")
-            formatted_html = ""
+            sections = []
             current_header = None
             current_content = ""
-            
-            def flush_section(header, body_text):
+
+            def build_block(header, body_text):
                 if not header:
                     return body_text
                 
-                has_content = bool(body_text.strip())
-                has_content_class = " has-content" if has_content else ""
+                has_list = "<ul" in body_text or "<ol" in body_text
+                clean_body = body_text.strip()
                 
-                if not has_content:
-                    return f'<div class="section-accordion"><div class="section-header">{header}</div></div>'
-                
-                return f'<details open class="section-accordion{has_content_class}"><summary class="section-header">{header}</summary><div class="section-content">{body_text}</div></details>'
+                if has_list:
+                    return f'<details open><summary>{header}</summary><div>{body_text}</div></details>'
+                elif clean_body:
+                    return f'<div><div>{header}</div><div>{body_text}</div></div>'
+                else:
+                    return f'<div><div>{header}</div></div>'
 
             for part in parts:
                 if not part:
                     continue
-
                 if part.strip().startswith("<h"):
-                    formatted_html += flush_section(current_header, current_content)
+                    if current_header or current_content:
+                        sections.append((current_header, current_content))
                     current_header = part.strip()
                     current_content = ""
                 else:
                     current_content += part
 
-            formatted_html += flush_section(current_header, current_content)
-            return formatted_html
+            if current_header or current_content:
+                sections.append((current_header, current_content))
+
+            regular_blocks = []
+            bncc_blocks = []
+
+            for h, b in sections:
+                is_bncc = False
+                combined_check = (h or "") + " " + (b or "")
+                if "BNCC" in combined_check.upper():
+                    is_bncc = True
+
+                rendered = build_block(h, b)
+                if is_bncc:
+                    bncc_blocks.append(rendered)
+                else:
+                    regular_blocks.append(rendered)
+
+            return "".join(regular_blocks) + "".join(bncc_blocks)
 
         return html
 
     def convert_to_html(self, document: dict) -> str:
+        self.header_titles_captured = 0
         body = document.get("body", {}).get("content", [])
         lists = document.get("lists", {})
         headers = document.get("headers", {})
 
         title = self.escape_html(document.get("title", "Documento"))
 
-        html = f"""<!DOCTYPE html>
+        return f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <title>{title}</title>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-* {{ box-sizing: border-box; }}
-body {{ 
-    background: white; 
-    color: black; 
-    max-width: 900px; 
-    margin: 0 auto; 
-    padding: 16px; 
-    font-family: 'Montserrat', sans-serif; 
-}}
-
-p {{ margin: 0; padding-bottom: 2px; }}
-h1, h2, h3, h4, h5, h6 {{ margin: 0; display: inline-block; vertical-align: middle; }}
-ul, ol {{ margin-top: 2px; margin-bottom: 4px; padding-left: 20px; }}
-li {{ margin-bottom: 2px; }}
-
-.header {{ margin-bottom: 8px; }}
-.footer {{ margin-top: 8px; font-size: 10pt; color: #555555; }}
-
-.section-accordion {{
-    margin-bottom: 8px;
-    border: none;
-}}
-
-.section-header {{
-    user-select: none;
-    list-style: none;
-    outline: none;
-    margin-bottom: 2px;
-    display: inline-flex;
-    align-items: center;
-}}
-
-summary.section-header {{
-    cursor: pointer;
-}}
-
-.section-header::-webkit-details-marker {{
-    display: none;
-}}
-
-.has-content > .section-header::after {{
-    content: "▸";
-    font-size: 11pt;
-    font-weight: bold;
-    margin-left: 10px;
-    display: inline-block;
-    vertical-align: middle;
-    transform: translateY(1px);
-    line-height: 1;
-    color: #44516B;
-}}
-
-details.has-content[open] > .section-header::after {{
-    content: "▾";
-    transform: translateY(0px);
-}}
-
-.section-content {{
-    padding: 2px 0;
-}}
-</style>
 </head>
 <body>
 
-<header class="header">
+<header>
     {self.process_header_footer(headers, lists, 'header')}
 </header>
 
-<div class="content-body">
+<div>
 {self.process_content(body, lists)}
 </div>
 
 </body>
 </html>
 """
-        return html
-
-    def _build_print_css(self) -> str:
-        return """
-            @page {
-                size: A4;
-                margin: 1.5cm 1.5cm 2cm 1.5cm;
-            }
-
-            * { box-sizing: border-box; }
-            html, body {
-                margin: 0;
-                padding: 0;
-                background: white;
-                color: #111111;
-                font-family: 'Montserrat', sans-serif;
-                line-height: 1.5;
-            }
-
-            body {
-                max-width: 100%;
-                margin: 0 auto;
-                padding: 16px 0;
-                font-size: 12pt;
-            }
-
-            p { margin: 0; padding-bottom: 2px; }
-            h1, h2, h3, h4, h5, h6 {
-                margin: 0;
-                display: inline-block;
-                vertical-align: middle;
-                break-after: avoid;
-                page-break-after: avoid;
-            }
-            ul, ol { margin-top: 2px; margin-bottom: 4px; padding-left: 20px; }
-            li { margin-bottom: 2px; }
-            .header { margin-bottom: 8px; }
-            .footer { margin-top: 8px; font-size: 10pt; color: #555555; }
-            .section-accordion {
-                margin-bottom: 8px;
-                border: none;
-                break-inside: avoid;
-                page-break-inside: avoid;
-            }
-            .section-header { user-select: none; list-style: none; outline: none; margin-bottom: 2px; display: inline-flex; align-items: center; }
-            summary.section-header { cursor: pointer; }
-            .section-header::-webkit-details-marker { display: none; }
-            .has-content > .section-header::after { content: "▸"; font-size: 11pt; font-weight: bold; margin-left: 10px; display: inline-block; vertical-align: middle; transform: translateY(1px); line-height: 1; color: #44516B; }
-            details.has-content[open] > .section-header::after { content: "▾"; transform: translateY(0px); }
-            .section-content { padding: 2px 0; }
-            details, summary { display: block !important; }
-            details > summary::after { display: none !important; }
-        """
-
-    def convert_to_print_html(self, document: dict) -> str:
-        body = document.get("body", {}).get("content", [])
-        lists = document.get("lists", {})
-        headers = document.get("headers", {})
-
-        title = self.escape_html(document.get("title", "Documento"))
-        css = self._build_print_css()
-
-        html = f"""<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>{title}</title>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-{css}
-</style>
-</head>
-<body>
-
-<header class="header">
-    {self.process_header_footer(headers, lists, 'header')}
-</header>
-
-<div class="content-body">
-{self.process_content(body, lists)}
-</div>
-
-</body>
-</html>
-"""
-        return html
